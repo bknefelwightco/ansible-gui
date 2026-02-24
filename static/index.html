@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ansible GUI</title>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #1a1a2e;
+      --surface:   #16213e;
+      --surface2:  #0f3460;
+      --accent:    #e94560;
+      --accent2:   #53c28b;
+      --text:      #e0e0e0;
+      --muted:     #8899aa;
+      --border:    #2a3a5a;
+      --console-bg:#0d1117;
+      --success:   #53c28b;
+      --danger:    #e94560;
+      --warn:      #f0a500;
+      --radius:    8px;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ───────────────────────────────────────────────── */
+    .app {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--surface2);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid var(--accent);
+    }
+
+    header h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: #fff;
+    }
+
+    header h1 span { color: var(--accent2); }
+
+    .conn-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .conn-dot {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      background: var(--warn);
+      transition: background 0.3s;
+    }
+    .conn-dot.ok   { background: var(--success); }
+    .conn-dot.fail { background: var(--danger); }
+
+    main {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 0;
+      overflow: hidden;
+      height: calc(100vh - 54px - 40px);
+    }
+
+    /* ── Sidebar ──────────────────────────────────────────────── */
+    .sidebar {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    section h2 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--muted);
+      margin-bottom: 10px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* ── Host/Tag lists ───────────────────────────────────────── */
+    .group-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent2);
+      margin: 10px 0 4px;
+    }
+
+    .check-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .check-list li label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 6px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+      font-size: 0.85rem;
+    }
+
+    .check-list li label:hover { background: var(--surface2); }
+
+    .check-list li input[type=checkbox] {
+      accent-color: var(--accent2);
+      width: 15px; height: 15px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .select-actions {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 6px;
+    }
+
+    .select-actions button {
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .select-actions button:hover { color: var(--text); border-color: var(--accent2); }
+
+    .loading-msg, .empty-msg {
+      color: var(--muted);
+      font-size: 0.8rem;
+      font-style: italic;
+    }
+
+    /* ── Vault password ───────────────────────────────────────── */
+    .vault-section input {
+      width: 100%;
+      padding: 8px 10px;
+      background: var(--console-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: 0.9rem;
+      font-family: monospace;
+      transition: border-color 0.2s;
+      margin-top: 2px;
+    }
+    .vault-section input:focus {
+      outline: none;
+      border-color: var(--accent2);
+    }
+
+    /* ── Run button ───────────────────────────────────────────── */
+    .run-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    #run-btn {
+      padding: 10px;
+      border-radius: var(--radius);
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    #run-btn:enabled:hover { opacity: 0.85; transform: translateY(-1px); }
+    #run-btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      transform: none;
+    }
+    #run-btn.running {
+      background: var(--warn);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .run-hint {
+      font-size: 0.72rem;
+      color: var(--muted);
+      text-align: center;
+      min-height: 1em;
+    }
+
+    /* ── Status bar ───────────────────────────────────────────── */
+    .status-bar {
+      font-size: 0.78rem;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: var(--surface2);
+      color: var(--muted);
+      min-height: 26px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .status-bar.success { color: var(--success); border-left: 3px solid var(--success); }
+    .status-bar.fail    { color: var(--danger);  border-left: 3px solid var(--danger); }
+
+    /* ── Console area ─────────────────────────────────────────── */
+    .console-area {
+      display: flex;
+      flex-direction: column;
+      background: var(--console-bg);
+      overflow: hidden;
+    }
+
+    .console-toolbar {
+      background: var(--surface);
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .console-toolbar span {
+      font-size: 0.75rem;
+      color: var(--muted);
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .clear-btn {
+      font-size: 0.72rem;
+      padding: 2px 10px;
+      border-radius: 4px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .clear-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    #console {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px;
+      font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
+      font-size: 0.82rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #c9d1d9;
+    }
+
+    #console .line { display: block; }
+    #console .line.ok   { color: var(--success); }
+    #console .line.fail { color: var(--danger); }
+    #console .line.warn { color: var(--warn); }
+    #console .line.meta { color: #7d8590; font-style: italic; }
+    #console .line.recap { font-weight: bold; color: #58a6ff; }
+
+    /* scrollbar */
+    #console::-webkit-scrollbar { width: 6px; }
+    #console::-webkit-scrollbar-track { background: transparent; }
+    #console::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
+
+    /* ── Footer ───────────────────────────────────────────────── */
+    footer {
+      background: var(--surface);
+      padding: 0 16px;
+      border-top: 1px solid var(--border);
+      height: 40px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    #last-status {
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    #last-status.success { color: var(--success); }
+    #last-status.fail    { color: var(--danger); }
+
+    /* ── Responsive ───────────────────────────────────────────── */
+    @media (max-width: 700px) {
+      main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .sidebar { max-height: 45vh; }
+    }
+  </style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <h1>Ansible <span>GUI</span></h1>
+    <div class="conn-badge">
+      <div class="conn-dot" id="conn-dot"></div>
+      <span id="conn-label">Connecting…</span>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main>
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+
+      <!-- Inventory / Hosts -->
+      <section id="hosts-section">
+        <h2>Targets (Hosts)</h2>
+        <div class="select-actions">
+          <button onclick="selectAll('host')">All</button>
+          <button onclick="selectNone('host')">None</button>
+        </div>
+        <div id="hosts-list"><span class="loading-msg">Loading inventory…</span></div>
+      </section>
+
+      <!-- Tags -->
+      <section id="tags-section">
+        <h2>Tags <small style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</small></h2>
+        <div class="select-actions">
+          <button onclick="selectAll('tag')">All</button>
+          <button onclick="selectNone('tag')">None</button>
+        </div>
+        <div id="tags-list"><span class="loading-msg">Loading tags…</span></div>
+      </section>
+
+      <!-- Vault -->
+      <section class="vault-section">
+        <h2>Vault Password</h2>
+        <input
+          type="password"
+          id="vault-pw"
+          placeholder="Enter vault password (if required)"
+          autocomplete="current-password"
+          oninput="updateRunBtn()"
+        />
+      </section>
+
+      <!-- Run -->
+      <section class="run-section">
+        <button id="run-btn" disabled onclick="runPlaybook()">▶ Run Playbook</button>
+        <div class="run-hint" id="run-hint">Select ≥1 host to enable</div>
+      </section>
+
+    </aside>
+
+    <!-- Console -->
+    <div class="console-area">
+      <div class="console-toolbar">
+        <span>📟 Output Console</span>
+        <button class="clear-btn" onclick="clearConsole()">Clear</button>
+      </div>
+      <div id="console"><span class="line meta">Waiting for playbook run…</span></div>
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <span id="last-status">Last run: none</span>
+  </footer>
+
+</div>
+
+<script>
+/* ── State ─────────────────────────────────────────────────── */
+let isRunning = false;
+let currentSSE = null;
+
+/* ── Boot ──────────────────────────────────────────────────── */
+window.addEventListener('DOMContentLoaded', async () => {
+  await Promise.all([loadInventory(), loadTags()]);
+  await loadStatus();
+  setConn(true);
+});
+
+/* ── Connection indicator ──────────────────────────────────── */
+function setConn(ok, msg) {
+  const dot = document.getElementById('conn-dot');
+  const lbl = document.getElementById('conn-label');
+  dot.className = 'conn-dot ' + (ok ? 'ok' : 'fail');
+  lbl.textContent = msg || (ok ? 'Connected' : 'Error');
+}
+
+/* ── Inventory ─────────────────────────────────────────────── */
+async function loadInventory() {
+  const container = document.getElementById('hosts-list');
+  try {
+    const res = await fetch('/api/inventory');
+    if (!res.ok) throw new Error(await res.text());
+    const { groups } = await res.json();
+
+    if (!groups || Object.keys(groups).length === 0) {
+      container.innerHTML = '<span class="empty-msg">No hosts found in inventory.</span>';
+      return;
+    }
+
+    let html = '';
+    for (const [group, hosts] of Object.entries(groups)) {
+      if (!hosts.length) continue;
+      html += `<div class="group-label">${escHtml(group)}</div><ul class="check-list">`;
+      for (const host of hosts) {
+        const id = `host-${escHtml(host)}`;
+        html += `<li><label>
+          <input type="checkbox" class="host-cb" id="${id}" value="${escHtml(host)}" onchange="updateRunBtn()">
+          ${escHtml(host)}
+        </label></li>`;
+      }
+      html += '</ul>';
+    }
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<span class="empty-msg" style="color:var(--danger)">⚠ ${escHtml(String(e))}</span>`;
+    setConn(false, 'Inventory error');
+  }
+}
+
+/* ── Tags ──────────────────────────────────────────────────── */
+async function loadTags() {
+  const container = document.getElementById('tags-list');
+  try {
+    const res = await fetch('/api/tags');
+    if (!res.ok) throw new Error(await res.text());
+    const { tags } = await res.json();
+
+    if (!tags || tags.length === 0) {
+      container.innerHTML = '<span class="empty-msg">No tags found (or no tags defined).</span>';
+      return;
+    }
+
+    let html = '<ul class="check-list">';
+    for (const tag of tags) {
+      const id = `tag-${escHtml(tag)}`;
+      html += `<li><label>
+        <input type="checkbox" class="tag-cb" id="${id}" value="${escHtml(tag)}">
+        ${escHtml(tag)}
+      </label></li>`;
+    }
+    html += '</ul>';
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = `<span class="empty-msg" style="color:var(--warn)">⚠ ${escHtml(String(e))}</span>`;
+  }
+}
+
+/* ── Status ────────────────────────────────────────────────── */
+async function loadStatus() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) return;
+    const s = await res.json();
+    renderStatus(s);
+  } catch (_) {}
+}
+
+function renderStatus(s) {
+  const el = document.getElementById('last-status');
+  if (s.returncode === null) {
+    el.textContent = 'Last run: none';
+    el.className = '';
+    return;
+  }
+  const ok = s.success;
+  const ts = s.timestamp ? new Date(s.timestamp).toLocaleString() : '?';
+  el.textContent = `Last run: ${ok ? '✅ Success' : '❌ Failed'} (rc=${s.returncode}) @ ${ts}`;
+  el.className = ok ? 'success' : 'fail';
+}
+
+/* ── Select helpers ────────────────────────────────────────── */
+function selectAll(type) {
+  document.querySelectorAll(`.${type}-cb`).forEach(cb => cb.checked = true);
+  updateRunBtn();
+}
+function selectNone(type) {
+  document.querySelectorAll(`.${type}-cb`).forEach(cb => cb.checked = false);
+  updateRunBtn();
+}
+
+/* ── Run button state ──────────────────────────────────────── */
+function updateRunBtn() {
+  const hosts = getChecked('host-cb');
+  const btn = document.getElementById('run-btn');
+  const hint = document.getElementById('run-hint');
+
+  if (isRunning) {
+    btn.disabled = false;
+    btn.textContent = '⏹ Running… (click to abort)';
+    hint.textContent = 'Playbook is running';
+    return;
+  }
+
+  const hasHost = hosts.length > 0;
+  btn.disabled = !hasHost;
+  btn.textContent = '▶ Run Playbook';
+
+  if (!hasHost) {
+    hint.textContent = 'Select ≥1 host to enable';
+  } else {
+    hint.textContent = `${hosts.length} host(s) selected`;
+  }
+}
+
+function getChecked(cls) {
+  return [...document.querySelectorAll(`.${cls}:checked`)].map(cb => cb.value);
+}
+
+/* ── Run playbook ──────────────────────────────────────────── */
+async function runPlaybook() {
+  // If already running, abort
+  if (isRunning) {
+    if (currentSSE) { currentSSE.close(); currentSSE = null; }
+    isRunning = false;
+    updateRunBtn();
+    appendLine('⏹ Aborted by user.', 'warn');
+    return;
+  }
+
+  const hosts = getChecked('host-cb');
+  const tags  = getChecked('tag-cb');
+  const vault = document.getElementById('vault-pw').value;
+
+  if (!hosts.length) return;
+
+  clearConsole();
+  isRunning = true;
+  updateRunBtn();
+
+  const btn = document.getElementById('run-btn');
+  btn.disabled = false;
+  btn.className = 'running';
+  btn.textContent = '⏹ Running… (click to abort)';
+
+  try {
+    // POST to kick off; server streams SSE
+    const res = await fetch('/api/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hosts, tags, vault_password: vault }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      appendLine(`❌ Server error: ${err}`, 'fail');
+      finishRun(1);
+      return;
+    }
+
+    // Read SSE stream from the response body
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop(); // last incomplete chunk
+
+      for (const part of parts) {
+        if (!part.trim()) continue;
+        const lines = part.split('\n');
+        let eventType = 'message';
+        let dataLines = [];
+
+        for (const l of lines) {
+          if (l.startsWith('event: ')) eventType = l.slice(7).trim();
+          else if (l.startsWith('data: ')) dataLines.push(l.slice(6));
+        }
+
+        const data = dataLines.join('\n');
+
+        if (eventType === 'done') {
+          const rc = parseInt(data, 10);
+          finishRun(rc);
+          return;
+        } else {
+          renderOutputLine(data);
+        }
+      }
+    }
+    // Stream ended without done event
+    finishRun(0);
+  } catch (e) {
+    appendLine(`❌ Connection error: ${e}`, 'fail');
+    finishRun(1);
+  }
+}
+
+function finishRun(rc) {
+  isRunning = false;
+  currentSSE = null;
+  const btn = document.getElementById('run-btn');
+  btn.className = '';
+  updateRunBtn();
+  // Refresh status
+  loadStatus();
+}
+
+/* ── Console rendering ─────────────────────────────────────── */
+function renderOutputLine(text) {
+  // Color-code common Ansible output patterns
+  let cls = '';
+  if (/ok\s*=\s*\d+|PLAY RECAP/i.test(text))      cls = 'recap';
+  else if (/failed=\s*[^0]|FAILED|ERROR/i.test(text)) cls = 'fail';
+  else if (/ok=/i.test(text) || /changed=/i.test(text)) cls = 'ok';
+  else if (/warning|warn/i.test(text))             cls = 'warn';
+  appendLine(text, cls);
+}
+
+function appendLine(text, cls = '') {
+  const con = document.getElementById('console');
+  // Remove placeholder on first real output
+  const placeholder = con.querySelector('.meta');
+  if (placeholder && placeholder.textContent === 'Waiting for playbook run…') {
+    con.innerHTML = '';
+  }
+
+  const span = document.createElement('span');
+  span.className = 'line' + (cls ? ' ' + cls : '');
+  span.textContent = text;
+  con.appendChild(span);
+  con.appendChild(document.createTextNode('\n'));
+
+  // Auto-scroll
+  con.scrollTop = con.scrollHeight;
+}
+
+function clearConsole() {
+  document.getElementById('console').innerHTML = '';
+}
+
+/* ── Utility ───────────────────────────────────────────────── */
+function escHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
