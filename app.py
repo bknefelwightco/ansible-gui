@@ -136,7 +136,12 @@ def _resolve_group_hosts(group_name: str, data: dict, visited: set) -> set:
 @app.get("/api/inventory")
 async def get_inventory():
     """
-    Run `ansible-inventory --list --json` and return structured hosts + groups.
+    Run `ansible-inventory --list --export` and return structured hosts + groups.
+
+    Returns a dict with:
+      - hosts: sorted list of all host names
+      - groups: dict mapping group name → sorted list of member hosts
+                (group membership is resolved transitively through children)
     """
     ansible_dir = _ansible_dir()
     inventory = _inventory_path()
@@ -200,7 +205,10 @@ async def get_inventory():
 @app.get("/api/tags")
 async def get_tags():
     """
-    Run `ansible-playbook site.yml --list-tags` and parse TASK TAGS lines.
+    Run `ansible-playbook <PLAYBOOK> --list-tags` and parse TASK TAGS lines.
+
+    Parses all lines matching `TASK TAGS: [tag1, tag2, ...]` from combined
+    stdout+stderr and returns a deduplicated, sorted list.
     """
     ansible_dir = _ansible_dir()
     inventory = _inventory_path()
@@ -252,8 +260,16 @@ class RunRequest(BaseModel):
 @app.post("/api/run")
 async def run_playbook(req: RunRequest):
     """
-    Stream ansible-playbook output as Server-Sent Events.
-    Vault password is written to a chmod-600 temp file and cleaned up after.
+    Stream ansible-playbook output as Server-Sent Events (SSE).
+
+    Validates host and tag inputs against safe-character allowlists before
+    building the command. Vault password (if provided) is written to a
+    chmod-600 temp file, passed via --vault-password-file, and deleted
+    immediately after the run. Appends --check when check_mode is True.
+
+    Each output line is sent as a `data:` SSE event. A final `event: done`
+    event carries the playbook return code. If the client disconnects,
+    the subprocess is killed via CancelledError handling.
     """
     global _active_proc
 
@@ -420,6 +436,7 @@ async def get_status():
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
+    """Serve the single-page frontend (static/index.html)."""
     index = BASE_DIR / "static" / "index.html"
     if index.exists():
         return HTMLResponse(content=index.read_text())
