@@ -199,7 +199,7 @@
       letter-spacing: 0.5px;
       cursor: pointer;
       border: none;
-      background: var(--accent);
+      background: var(--accent2);   /* green — not red */
       color: #fff;
       transition: opacity 0.2s, transform 0.1s;
     }
@@ -210,7 +210,7 @@
       transform: none;
     }
     #run-btn.running {
-      background: var(--warn);
+      background: #c0392b;          /* clear red = stop/danger */
       animation: pulse 1.5s infinite;
     }
 
@@ -266,6 +266,11 @@
       text-transform: uppercase;
     }
 
+    .console-toolbar-btns {
+      display: flex;
+      gap: 6px;
+    }
+
     .clear-btn {
       font-size: 0.72rem;
       padding: 2px 10px;
@@ -285,7 +290,8 @@
       font-size: 0.82rem;
       line-height: 1.7;
       white-space: pre-wrap;
-      word-break: break-all;
+      word-break: break-word;
+      overflow-wrap: break-word;
       color: #c9d1d9;
     }
 
@@ -356,7 +362,7 @@
 
       <!-- Tags -->
       <section id="tags-section">
-        <h2>Tags <small style="font-weight:400;text-transform:none;letter-spacing:0">(optional)</small></h2>
+        <h2>Tags <small style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">(optional — leave all unchecked to run all roles)</small></h2>
         <div class="select-actions">
           <button onclick="selectAll('tag')">All</button>
           <button onclick="selectNone('tag')">None</button>
@@ -366,7 +372,7 @@
 
       <!-- Vault -->
       <section class="vault-section">
-        <h2>Vault Password</h2>
+        <label for="vault-pw" style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);display:block;margin-bottom:6px;">Vault Password</label>
         <input
           type="password"
           id="vault-pw"
@@ -374,10 +380,16 @@
           autocomplete="current-password"
           oninput="updateRunBtn()"
         />
+        <p style="font-size:0.72rem;color:var(--muted);margin-top:4px;">Required if your playbook uses encrypted secrets. Leave blank otherwise.</p>
       </section>
 
       <!-- Run -->
       <section class="run-section">
+        <!-- Check mode toggle -->
+        <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;padding:4px 0;">
+          <input type="checkbox" id="check-mode" style="accent-color:var(--accent2);width:15px;height:15px;">
+          <span>Check mode <span style="color:var(--muted);font-size:0.72rem">(--check, no changes applied)</span></span>
+        </label>
         <button id="run-btn" disabled onclick="runPlaybook()">▶ Run Playbook</button>
         <div class="run-hint" id="run-hint">Select ≥1 host to enable</div>
       </section>
@@ -388,9 +400,12 @@
     <div class="console-area">
       <div class="console-toolbar">
         <span>📟 Output Console</span>
-        <button class="clear-btn" onclick="clearConsole()">Clear</button>
+        <div class="console-toolbar-btns">
+          <button class="clear-btn" onclick="downloadLog()">Download</button>
+          <button class="clear-btn" onclick="clearConsole()">Clear</button>
+        </div>
       </div>
-      <div id="console"><span class="line meta">Waiting for playbook run…</span></div>
+      <div id="console" role="log" aria-live="polite" aria-atomic="false"><span class="line meta">Waiting for playbook run…</span></div>
     </div>
 
   </main>
@@ -450,7 +465,7 @@ async function loadInventory() {
     }
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = `<span class="empty-msg" style="color:var(--danger)">⚠ ${escHtml(String(e))}</span>`;
+    container.innerHTML = `<span class="empty-msg" style="color:var(--danger)">⚠ ${escHtml(String(e))} <button onclick="loadInventory()" style="margin-left:8px;font-size:0.72rem;padding:2px 8px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);cursor:pointer;">Retry</button></span>`;
     setConn(false, 'Inventory error');
   }
 }
@@ -479,7 +494,7 @@ async function loadTags() {
     html += '</ul>';
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = `<span class="empty-msg" style="color:var(--warn)">⚠ ${escHtml(String(e))}</span>`;
+    container.innerHTML = `<span class="empty-msg" style="color:var(--danger)">⚠ ${escHtml(String(e))} <button onclick="loadTags()" style="margin-left:8px;font-size:0.72rem;padding:2px 8px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);cursor:pointer;">Retry</button></span>`;
   }
 }
 
@@ -524,7 +539,7 @@ function updateRunBtn() {
 
   if (isRunning) {
     btn.disabled = false;
-    btn.textContent = '⏹ Running… (click to abort)';
+    btn.textContent = '🛑 Abort Run';
     hint.textContent = 'Playbook is running';
     return;
   }
@@ -548,6 +563,7 @@ function getChecked(cls) {
 async function runPlaybook() {
   // If already running, abort
   if (isRunning) {
+    await fetch('/api/abort', { method: 'POST' }).catch(() => {});
     if (currentSSE) { currentSSE.close(); currentSSE = null; }
     isRunning = false;
     updateRunBtn();
@@ -558,8 +574,12 @@ async function runPlaybook() {
   const hosts = getChecked('host-cb');
   const tags  = getChecked('tag-cb');
   const vault = document.getElementById('vault-pw').value;
+  const checkMode = document.getElementById('check-mode').checked;
 
   if (!hosts.length) return;
+
+  // Confirmation dialog before run
+  if (!confirm(`Run playbook against ${hosts.length} host(s):\n${hosts.join('\n')}\n\nContinue?`)) return;
 
   clearConsole();
   isRunning = true;
@@ -568,14 +588,14 @@ async function runPlaybook() {
   const btn = document.getElementById('run-btn');
   btn.disabled = false;
   btn.className = 'running';
-  btn.textContent = '⏹ Running… (click to abort)';
+  btn.textContent = '🛑 Abort Run';
 
   try {
     // POST to kick off; server streams SSE
     const res = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hosts, tags, vault_password: vault }),
+      body: JSON.stringify({ hosts, tags, vault_password: vault, check_mode: checkMode }),
     });
 
     if (!res.ok) {
@@ -600,6 +620,8 @@ async function runPlaybook() {
 
       for (const part of parts) {
         if (!part.trim()) continue;
+        // Skip SSE comments (lines starting with ':')
+        if (part.trimStart().startsWith(':')) continue;
         const lines = part.split('\n');
         let eventType = 'message';
         let dataLines = [];
@@ -636,6 +658,17 @@ function finishRun(rc) {
   updateRunBtn();
   // Refresh status
   loadStatus();
+}
+
+/* ── Download log ──────────────────────────────────────────── */
+function downloadLog() {
+  const text = document.getElementById('console').innerText;
+  const blob = new Blob([text], { type: 'text/plain' });
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: `ansible-run-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.txt`
+  });
+  a.click();
 }
 
 /* ── Console rendering ─────────────────────────────────────── */

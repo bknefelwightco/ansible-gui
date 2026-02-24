@@ -10,6 +10,7 @@ import os
 import re
 import stat
 import tempfile
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -21,8 +22,6 @@ from pydantic import BaseModel
 
 import config
 
-app = FastAPI(title="Ansible GUI")
-
 # ---------------------------------------------------------------------------
 # In-memory last-run state
 # ---------------------------------------------------------------------------
@@ -31,6 +30,27 @@ _last_run: dict = {
     "timestamp": None,
     "success": None,
 }
+
+# Active process reference for abort endpoint
+_active_proc: Optional[asyncio.subprocess.Process] = None
+
+# ---------------------------------------------------------------------------
+# Input validation patterns
+# ---------------------------------------------------------------------------
+_SAFE_HOST = re.compile(r'^[\w.\-:@]+$')
+_SAFE_TAG  = re.compile(r'^[\w.\-]+$')
+
+
+def _validate_hosts(hosts: list[str]) -> None:
+    for h in hosts:
+        if not _SAFE_HOST.match(h):
+            raise HTTPException(400, f"Invalid host name: {h!r}")
+
+
+def _validate_tags(tags: list[str]) -> None:
+    for t in tags:
+        if not _SAFE_TAG.match(t):
+            raise HTTPException(400, f"Invalid tag: {t!r}")
 
 
 # ---------------------------------------------------------------------------
@@ -62,10 +82,51 @@ async def _run_command(cmd: list[str], cwd: str) -> tuple[int, str, str]:
         stdout, stderr = await proc.communicate()
         return proc.returncode, stdout.decode(errors="replace"), stderr.decode(errors="replace")
     except FileNotFoundError:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Command not found: {cmd[0]}. Is Ansible installed?",
-        )
+        # Raise RuntimeError; callers decide how to surface it
+        raise RuntimeError(f"Command not found: {cmd[0]}. Is Ansible installed?")
+
+
+# ---------------------------------------------------------------------------
+# Startup lifespan validation
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app):
+    d = _ansible_dir()
+    if not d.is_dir():
+        raise RuntimeError(f"ANSIBLE_DIR does not exist: {d}")
+    yield
+
+
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
+
+app = FastAPI(title="Ansible GUI", lifespan=lifespan)
+
+# ---------------------------------------------------------------------------
+# Static files — path relative to app.py, not CWD
+# ---------------------------------------------------------------------------
+
+BASE_DIR = Path(__file__).parent
+app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+
+
+# ---------------------------------------------------------------------------
+# Inventory children resolver
+# ---------------------------------------------------------------------------
+
+def _resolve_group_hosts(group_name: str, data: dict, visited: set) -> set:
+    if group_name in visited:
+        return set()
+    visited.add(group_name)
+    gd = data.get(group_name, {})
+    if not isinstance(gd, dict):
+        return set()
+    hosts = set(gd.get("hosts", []))
+    for child in gd.get("children", []):
+        hosts |= _resolve_group_hosts(child, data, visited)
+    return hosts
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +148,10 @@ async def get_inventory():
         "--export",
     ]
 
-    returncode, stdout, stderr = await _run_command(cmd, str(ansible_dir))
+    try:
+        returncode, stdout, stderr = await _run_command(cmd, str(ansible_dir))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     if returncode != 0:
         raise HTTPException(
@@ -100,8 +164,7 @@ async def get_inventory():
     except json.JSONDecodeError as e:
         raise HTTPException(status_code=500, detail=f"Failed to parse inventory JSON: {e}")
 
-    # Build groups → hosts mapping
-    # The JSON has a top-level "_meta" key with "hostvars" and group keys.
+    # Build groups → hosts mapping (with transitive children resolution)
     meta = data.get("_meta", {})
     hostvars = meta.get("hostvars", {})
     all_hosts = set(hostvars.keys())
@@ -112,11 +175,11 @@ async def get_inventory():
             continue
         if not isinstance(group_data, dict):
             continue
-        hosts_in_group = group_data.get("hosts", [])
-        if hosts_in_group:
-            groups[group_name] = sorted(hosts_in_group)
+        resolved = _resolve_group_hosts(group_name, data, set())
+        if resolved:
+            groups[group_name] = sorted(resolved)
 
-    # If a host appears in no group, put it under "ungrouped"
+    # If a host appears in no explicit group, put it under "ungrouped"
     grouped_hosts: set[str] = set()
     for members in groups.values():
         grouped_hosts.update(members)
@@ -150,7 +213,10 @@ async def get_tags():
         "--list-tags",
     ]
 
-    returncode, stdout, stderr = await _run_command(cmd, str(ansible_dir))
+    try:
+        returncode, stdout, stderr = await _run_command(cmd, str(ansible_dir))
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
     if returncode != 0:
         raise HTTPException(
@@ -180,6 +246,7 @@ class RunRequest(BaseModel):
     hosts: list[str]
     tags: list[str] = []
     vault_password: str = ""
+    check_mode: bool = False
 
 
 @app.post("/api/run")
@@ -188,28 +255,38 @@ async def run_playbook(req: RunRequest):
     Stream ansible-playbook output as Server-Sent Events.
     Vault password is written to a chmod-600 temp file and cleaned up after.
     """
+    global _active_proc
+
     if not req.hosts:
         raise HTTPException(status_code=400, detail="At least one host must be selected.")
+
+    # Validate host and tag inputs before building the command
+    _validate_hosts(req.hosts)
+    _validate_tags(req.tags)
 
     ansible_dir = _ansible_dir()
     inventory = _inventory_path()
     playbook = _playbook_path()
 
     async def event_stream():
+        global _active_proc
         vault_file_path: Optional[str] = None
         proc = None
+        returncode = None  # initialised here to avoid UnboundLocalError
 
         try:
-            # Write vault password to a secure temp file
+            # Write vault password to a secure temp file — chmod BEFORE any write
             if req.vault_password:
-                tmp = tempfile.NamedTemporaryFile(
-                    mode="w", suffix=".tmp", delete=False
-                )
-                tmp.write(req.vault_password)
-                tmp.flush()
-                tmp.close()
-                vault_file_path = tmp.name
-                os.chmod(vault_file_path, stat.S_IRUSR | stat.S_IWUSR)  # 600
+                fd, vault_file_path = tempfile.mkstemp(suffix=".vaultpw")
+                try:
+                    os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)  # 600 before any write
+                    with os.fdopen(fd, "w") as f:
+                        f.write(req.vault_password)
+                        f.write("\n")  # ansible expects trailing newline
+                except Exception:
+                    os.unlink(vault_file_path)
+                    vault_file_path = None
+                    raise
 
             # Build command
             cmd = [
@@ -222,13 +299,17 @@ async def run_playbook(req: RunRequest):
                 cmd += ["--tags", ",".join(req.tags)]
             if vault_file_path:
                 cmd += ["--vault-password-file", vault_file_path]
+            if req.check_mode:
+                cmd += ["--check"]
 
             yield f"data: 🚀 Starting playbook: {config.PLAYBOOK}\n\n"
             yield f"data: 📂 Working dir: {ansible_dir}\n\n"
             yield f"data: 🎯 Targets: {', '.join(req.hosts)}\n\n"
             if req.tags:
                 yield f"data: 🏷️  Tags: {', '.join(req.tags)}\n\n"
-            yield "data: \n\n"
+            if req.check_mode:
+                yield "data: 🔍 Check mode ON — no changes will be applied\n\n"
+            yield ": \n\n"  # SSE comment separator — no spurious events
 
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -237,24 +318,25 @@ async def run_playbook(req: RunRequest):
                 cwd=str(ansible_dir),
                 env={**os.environ, "ANSIBLE_FORCE_COLOR": "0", "PYTHONUNBUFFERED": "1"},
             )
+            _active_proc = proc
 
             # Stream output line by line
             async for raw_line in proc.stdout:
                 line = raw_line.decode(errors="replace").rstrip()
-                # Escape SSE-sensitive characters (data lines can't contain raw newlines)
-                yield f"data: {line}\n\n"
+                if not line:
+                    yield ": \n\n"  # blank comment — no spurious events
+                else:
+                    yield f"data: {line}\n\n"
 
             await proc.wait()
             returncode = proc.returncode
 
         except asyncio.CancelledError:
-            # Client disconnected — kill the subprocess
+            # Client disconnected — kill the subprocess immediately
+            # (asyncio.sleep would re-raise CancelledError before proc.kill)
             if proc and proc.returncode is None:
                 try:
-                    proc.terminate()
-                    await asyncio.sleep(1)
-                    if proc.returncode is None:
-                        proc.kill()
+                    proc.kill()
                 except ProcessLookupError:
                     pass
             returncode = -1
@@ -271,6 +353,9 @@ async def run_playbook(req: RunRequest):
             return
 
         finally:
+            # Clear active proc reference
+            _active_proc = None
+
             # Clean up vault temp file
             if vault_file_path and os.path.exists(vault_file_path):
                 try:
@@ -278,13 +363,16 @@ async def run_playbook(req: RunRequest):
                 except OSError:
                     pass
 
-        # Update in-memory last-run state
-        _last_run["returncode"] = returncode
-        _last_run["timestamp"] = datetime.now(timezone.utc).isoformat()
-        _last_run["success"] = returncode == 0
+            # Update in-memory last-run state atomically (only if we have a result)
+            if returncode is not None:
+                _last_run.update({
+                    "returncode": returncode,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "success": returncode == 0,
+                })
 
         status_icon = "✅" if returncode == 0 else "❌"
-        yield f"data: \n\n"
+        yield ": \n\n"
         yield f"data: {status_icon} Playbook finished with return code {returncode}\n\n"
         yield f"event: done\ndata: {returncode}\n\n"
 
@@ -299,6 +387,24 @@ async def run_playbook(req: RunRequest):
 
 
 # ---------------------------------------------------------------------------
+# API: abort
+# ---------------------------------------------------------------------------
+
+@app.post("/api/abort")
+async def abort_run():
+    """Kill the currently running ansible-playbook process, if any."""
+    global _active_proc
+    proc = _active_proc
+    if proc is None or proc.returncode is not None:
+        return {"status": "no active run"}
+    try:
+        proc.kill()
+    except ProcessLookupError:
+        pass
+    return {"status": "killed"}
+
+
+# ---------------------------------------------------------------------------
 # API: status
 # ---------------------------------------------------------------------------
 
@@ -309,15 +415,12 @@ async def get_status():
 
 
 # ---------------------------------------------------------------------------
-# Static files + root
+# Root route — path relative to app.py, not CWD
 # ---------------------------------------------------------------------------
-
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
-    index = Path("static/index.html")
+    index = BASE_DIR / "static" / "index.html"
     if index.exists():
         return HTMLResponse(content=index.read_text())
     return HTMLResponse("<h1>Ansible GUI</h1><p>static/index.html not found.</p>")
