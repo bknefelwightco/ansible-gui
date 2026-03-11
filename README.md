@@ -72,13 +72,30 @@ While a playbook is running, the **Run** button becomes **Abort Run**. Clicking 
 
 Enabling **Check mode** appends `--check` to the `ansible-playbook` command. Ansible simulates all tasks without making any actual changes. Use it to preview what *would* change before committing a real run. The console will note `🔍 Check mode ON — no changes will be applied` at the top of each run.
 
+## Inventory Editor
+
+Click the **📋 Inventory Editor** button in the header to open the inventory editor panel. This lets you view and edit host variables directly in the browser — no YAML editing required.
+
+### What it does
+
+- **Browse hosts by group** — Hosts are listed per Ansible group. Click a host to load its variables.
+- **Edit host variables** — Fields render as smart inputs: booleans become toggles, enum fields become dropdowns, IP/string fields are plain text. Changes are saved back to the inventory YAML immediately.
+- **Add hosts** — Use the **+ Add Host** button within any group. New hosts are pre-populated with schema defaults for that group.
+- **Delete hosts** — Remove a host from inventory with the delete button. A confirmation step prevents accidents.
+- **YAML comment preservation** — Edits use `ruamel.yaml` under the hood, so any comments in your inventory file survive round-trips through the editor.
+- **Automatic backup** — Before every write, the backend saves a `.inventory.yml.bak` alongside the live file.
+
+### Group schemas
+
+The editor ships with a built-in variable schema for known groups (e.g. `Windows`, `Imaged`). This drives the smart input types and default values when adding new hosts. Groups without a schema still work — variables show as plain text fields.
+
 ## Project Structure
 
 ```
 ansible-gui/
-├── app.py              # FastAPI backend — API endpoints, SSE streaming
+├── app.py              # FastAPI backend — API endpoints, SSE streaming, inventory CRUD
 ├── config.py           # Config — reads ANSIBLE_DIR, PLAYBOOK, INVENTORY from env
-├── requirements.txt    # Python deps (fastapi, uvicorn)
+├── requirements.txt    # Python deps (fastapi, uvicorn, ruamel.yaml)
 ├── run.sh              # Startup script — activates venv, launches uvicorn
 ├── static/
 │   └── index.html      # Single-page frontend — all UI, vanilla JS
@@ -91,3 +108,4 @@ ansible-gui/
 - No authentication — rely on host-level access control
 - Vault passwords are written to a `chmod 600` temp file and deleted after each run
 - Host and tag inputs are validated against an allowlist pattern before being passed to the shell
+- Inventory writes are protected by a server-side async lock to prevent concurrent edits
