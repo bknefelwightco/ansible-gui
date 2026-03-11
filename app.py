@@ -221,11 +221,16 @@ async def get_inventory():
 # ---------------------------------------------------------------------------
 
 
-@app.get("/api/tags")
-async def get_tags():
+class TagsRequest(BaseModel):
+    vault_password: str = ""
+
+
+@app.post("/api/tags")
+async def get_tags(req: TagsRequest):
     """
     Run `ansible-playbook <PLAYBOOK> --list-tags` and parse TASK TAGS lines.
 
+    Accepts an optional vault password for encrypted playbooks.
     Parses all lines matching `TASK TAGS: [tag1, tag2, ...]` from combined
     stdout+stderr and returns a deduplicated, sorted list.
     """
@@ -233,24 +238,47 @@ async def get_tags():
     inventory = _inventory_path()
     playbook = _playbook_path()
 
-    cmd = [
-        "ansible-playbook",
-        str(playbook),
-        "-i",
-        str(inventory),
-        "--list-tags",
-    ]
-
+    vault_file_path: Optional[str] = None
     try:
-        returncode, stdout, stderr = await _run_command(cmd, str(ansible_dir))
-    except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        # Write vault password to secure temp file if provided
+        if req.vault_password:
+            fd, vault_file_path = tempfile.mkstemp(suffix=".vaultpw")
+            try:
+                os.fchmod(fd, stat.S_IRUSR | stat.S_IWUSR)
+                with os.fdopen(fd, "w") as f:
+                    f.write(req.vault_password)
+                    f.write("\n")
+            except Exception:
+                os.unlink(vault_file_path)
+                vault_file_path = None
+                raise
 
-    if returncode != 0:
-        raise HTTPException(
-            status_code=500,
-            detail=f"ansible-playbook --list-tags failed:\n{stderr or stdout}",
-        )
+        cmd = [
+            "ansible-playbook",
+            str(playbook),
+            "-i",
+            str(inventory),
+            "--list-tags",
+        ]
+        if vault_file_path:
+            cmd += ["--vault-password-file", vault_file_path]
+
+        try:
+            returncode, stdout, stderr = await _run_command(cmd, str(ansible_dir))
+        except RuntimeError as e:
+            raise HTTPException(status_code=500, detail=str(e))
+
+        if returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=f"ansible-playbook --list-tags failed:\n{stderr or stdout}",
+            )
+    finally:
+        if vault_file_path and os.path.exists(vault_file_path):
+            try:
+                os.unlink(vault_file_path)
+            except OSError:
+                pass
 
     # Parse lines like: "      TASK TAGS: [tag1, tag2, tag3]"
     tag_set: set[str] = set()

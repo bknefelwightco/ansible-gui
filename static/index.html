@@ -510,7 +510,8 @@
           <button onclick="selectAll('tag')">All</button>
           <button onclick="selectNone('tag')">None</button>
         </div>
-        <div id="tags-list"><span class="loading-msg">Loading tags…</span></div>
+        <div id="tags-list"><span class="empty-msg">Enter vault password below, then click Load Tags.</span></div>
+        <button id="load-tags-btn" onclick="loadTags()" style="margin-top:8px;padding:6px 12px;border-radius:var(--radius);font-size:0.82rem;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text);transition:border-color 0.2s,color 0.2s;">🏷️ Load Tags</button>
       </section>
 
       <!-- Vault -->
@@ -567,7 +568,7 @@ let currentSSE = null;
 
 /* ── Boot ──────────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', async () => {
-  await Promise.all([loadInventory(), loadTags()]);
+  await loadInventory();
   await loadStatus();
   setConn(true);
 });
@@ -616,8 +617,15 @@ async function loadInventory() {
 /* ── Tags ──────────────────────────────────────────────────── */
 async function loadTags() {
   const container = document.getElementById('tags-list');
+  const btn = document.getElementById('load-tags-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Loading…'; }
   try {
-    const res = await fetch('/api/tags');
+    const vault = document.getElementById('vault-pw').value;
+    const res = await fetch('/api/tags', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ vault_password: vault }),
+    });
     if (!res.ok) throw new Error(await res.text());
     const { tags } = await res.json();
 
@@ -638,6 +646,8 @@ async function loadTags() {
     container.innerHTML = html;
   } catch (e) {
     container.innerHTML = `<span class="empty-msg" style="color:var(--danger)">⚠ ${escHtml(String(e))} <button onclick="loadTags()" style="margin-left:8px;font-size:0.72rem;padding:2px 8px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);cursor:pointer;">Retry</button></span>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🏷️ Load Tags'; }
   }
 }
 
