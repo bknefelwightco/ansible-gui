@@ -14,13 +14,14 @@ import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from ruamel.yaml import YAML
+from ruamel.yaml.comments import CommentedMap
 
 import config
 
@@ -41,6 +42,10 @@ _active_proc: Optional[asyncio.subprocess.Process] = None
 # ---------------------------------------------------------------------------
 _SAFE_HOST = re.compile(r"^[\w.\-:@]+$")
 _SAFE_TAG = re.compile(r"^[\w.\-]+$")
+_SAFE_GROUP = re.compile(r"^[\w.\-]+$")
+
+# Concurrency lock for inventory writes
+_inv_lock = asyncio.Lock()
 
 
 def _validate_hosts(hosts: list[str]) -> None:
@@ -584,14 +589,40 @@ async def get_inventory_raw():
     return {"groups": groups, "schemas": _GROUP_SCHEMAS}
 
 
-@app.put("/api/inventory/host/{group}/{hostname}")
-async def update_inventory_host(group: str, hostname: str, request: Request):
-    """Update host variables in the inventory YAML."""
-    body = await request.json()
-    new_vars = body if isinstance(body, dict) else {}
+class HostVarsUpdate(BaseModel):
+    vars: dict[str, Any] = {}
 
+
+class HostAdd(BaseModel):
+    hostname: str
+    vars: dict[str, Any] = {}
+
+
+def _coerce_bool_by_schema(group: str, key: str, value):
+    """Only coerce string 'true'/'false' to bool if the group schema says type=='bool'."""
+    schema = _GROUP_SCHEMAS.get(group, {}).get(key, {})
+    if (
+        schema.get("type") == "bool"
+        and isinstance(value, str)
+        and value.lower()
+        in (
+            "true",
+            "false",
+        )
+    ):
+        return value.lower() == "true"
+    return value
+
+
+@app.put("/api/inventory/host/{group}/{hostname}")
+async def update_inventory_host(group: str, hostname: str, body: HostVarsUpdate):
+    """Update host variables in the inventory YAML."""
+    if not _SAFE_GROUP.match(group):
+        raise HTTPException(status_code=400, detail=f"Invalid group name: {group!r}")
     if not _SAFE_HOSTNAME.match(hostname):
         raise HTTPException(status_code=400, detail=f"Invalid hostname: {hostname!r}")
+
+    new_vars = body.vars
 
     # Validate IP if present
     if "ansible_host" in new_vars and new_vars["ansible_host"]:
@@ -601,45 +632,48 @@ async def update_inventory_host(group: str, hostname: str, request: Request):
                 detail=f"Invalid IP address: {new_vars['ansible_host']!r}",
             )
 
-    yaml, data = _load_inventory_yaml()
-    group_data = _get_group_data(data, group)
+    async with _inv_lock:
+        yaml, data = _load_inventory_yaml()
+        group_data = _get_group_data(data, group)
 
-    hosts_node = group_data.get("hosts")
-    if not hosts_node or hostname not in hosts_node:
-        raise HTTPException(
-            status_code=404, detail=f"Host '{hostname}' not in group '{group}'"
-        )
+        hosts_node = group_data.get("hosts")
+        if not hosts_node or hostname not in hosts_node:
+            raise HTTPException(
+                status_code=404, detail=f"Host '{hostname}' not in group '{group}'"
+            )
 
-    # Update vars while preserving the ruamel.yaml structure
-    host_data = hosts_node[hostname]
-    if host_data is None:
-        from ruamel.yaml.comments import CommentedMap
-
-        hosts_node[hostname] = CommentedMap()
+        # Update vars while preserving the ruamel.yaml structure
         host_data = hosts_node[hostname]
+        if host_data is None:
+            hosts_node[hostname] = CommentedMap()
+            host_data = hosts_node[hostname]
 
-    # Update existing keys and add new ones
-    for k, v in new_vars.items():
-        # Convert booleans from string if needed
-        if isinstance(v, str) and v.lower() in ("true", "false"):
-            v = v.lower() == "true"
-        host_data[k] = v
+        # Update existing keys and add new ones
+        for k, v in new_vars.items():
+            v = _coerce_bool_by_schema(group, k, v)
+            host_data[k] = v
 
-    # Remove keys not in new_vars (that aren't connection-related)
-    keys_to_remove = [k for k in host_data if k not in new_vars]
-    for k in keys_to_remove:
-        del host_data[k]
+        # Only remove keys that are in the group schema but not in new_vars.
+        # Keys not in the schema are preserved untouched.
+        schema_keys = set(_GROUP_SCHEMAS.get(group, {}).keys())
+        keys_to_remove = [
+            k for k in host_data if k in schema_keys and k not in new_vars
+        ]
+        for k in keys_to_remove:
+            del host_data[k]
 
-    _save_inventory_yaml(yaml, data)
+        _save_inventory_yaml(yaml, data)
     return {"status": "ok", "hostname": hostname, "group": group}
 
 
 @app.post("/api/inventory/host/{group}")
-async def add_inventory_host(group: str, request: Request):
+async def add_inventory_host(group: str, body: HostAdd):
     """Add a new host to a group."""
-    body = await request.json()
-    hostname = body.get("hostname", "")
-    new_vars = body.get("vars", {})
+    if not _SAFE_GROUP.match(group):
+        raise HTTPException(status_code=400, detail=f"Invalid group name: {group!r}")
+
+    hostname = body.hostname
+    new_vars = body.vars
 
     if not hostname or not _SAFE_HOSTNAME.match(hostname):
         raise HTTPException(status_code=400, detail=f"Invalid hostname: {hostname!r}")
@@ -651,51 +685,51 @@ async def add_inventory_host(group: str, request: Request):
                 detail=f"Invalid IP address: {new_vars['ansible_host']!r}",
             )
 
-    yaml, data = _load_inventory_yaml()
-    group_data = _get_group_data(data, group)
+    async with _inv_lock:
+        yaml, data = _load_inventory_yaml()
+        group_data = _get_group_data(data, group)
 
-    hosts_node = group_data.get("hosts")
-    if hosts_node is None:
-        from ruamel.yaml.comments import CommentedMap
+        hosts_node = group_data.get("hosts")
+        if hosts_node is None:
+            group_data["hosts"] = CommentedMap()
+            hosts_node = group_data["hosts"]
 
-        group_data["hosts"] = CommentedMap()
-        hosts_node = group_data["hosts"]
+        if hostname in hosts_node:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Host '{hostname}' already exists in '{group}'",
+            )
 
-    if hostname in hosts_node:
-        raise HTTPException(
-            status_code=409, detail=f"Host '{hostname}' already exists in '{group}'"
-        )
+        host_entry = CommentedMap()
+        for k, v in new_vars.items():
+            v = _coerce_bool_by_schema(group, k, v)
+            host_entry[k] = v
 
-    from ruamel.yaml.comments import CommentedMap
-
-    host_entry = CommentedMap()
-    for k, v in new_vars.items():
-        if isinstance(v, str) and v.lower() in ("true", "false"):
-            v = v.lower() == "true"
-        host_entry[k] = v
-
-    hosts_node[hostname] = host_entry
-    _save_inventory_yaml(yaml, data)
+        hosts_node[hostname] = host_entry
+        _save_inventory_yaml(yaml, data)
     return {"status": "ok", "hostname": hostname, "group": group}
 
 
 @app.delete("/api/inventory/host/{group}/{hostname}")
 async def delete_inventory_host(group: str, hostname: str):
     """Remove a host from a group."""
+    if not _SAFE_GROUP.match(group):
+        raise HTTPException(status_code=400, detail=f"Invalid group name: {group!r}")
     if not _SAFE_HOSTNAME.match(hostname):
         raise HTTPException(status_code=400, detail=f"Invalid hostname: {hostname!r}")
 
-    yaml, data = _load_inventory_yaml()
-    group_data = _get_group_data(data, group)
+    async with _inv_lock:
+        yaml, data = _load_inventory_yaml()
+        group_data = _get_group_data(data, group)
 
-    hosts_node = group_data.get("hosts")
-    if not hosts_node or hostname not in hosts_node:
-        raise HTTPException(
-            status_code=404, detail=f"Host '{hostname}' not in group '{group}'"
-        )
+        hosts_node = group_data.get("hosts")
+        if not hosts_node or hostname not in hosts_node:
+            raise HTTPException(
+                status_code=404, detail=f"Host '{hostname}' not in group '{group}'"
+            )
 
-    del hosts_node[hostname]
-    _save_inventory_yaml(yaml, data)
+        del hosts_node[hostname]
+        _save_inventory_yaml(yaml, data)
     return {"status": "ok", "hostname": hostname, "group": group}
 
 

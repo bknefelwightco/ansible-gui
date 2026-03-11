@@ -479,7 +479,7 @@
   <header>
     <h1>Ansible <span>GUI</span></h1>
     <div style="display:flex;align-items:center;gap:14px;">
-      <button onclick="openInventoryEditor()" style="padding:6px 14px;border-radius:var(--radius);font-size:0.8rem;font-weight:600;border:1px solid var(--accent2);background:transparent;color:var(--accent2);cursor:pointer;transition:background 0.15s,color 0.15s;" onmouseover="this.style.background='var(--accent2)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--accent2)'">📋 Inventory Editor</button>
+      <button id="inv-open-btn" style="padding:6px 14px;border-radius:var(--radius);font-size:0.8rem;font-weight:600;border:1px solid var(--accent2);background:transparent;color:var(--accent2);cursor:pointer;transition:background 0.15s,color 0.15s;" onmouseover="this.style.background='var(--accent2)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--accent2)'">📋 Inventory Editor</button>
       <div class="conn-badge">
         <div class="conn-dot" id="conn-dot"></div>
         <span id="conn-label">Connecting…</span>
@@ -849,7 +849,7 @@ function clearConsole() {
 
 /* ── Utility ───────────────────────────────────────────────── */
 function escHtml(str) {
-  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -858,15 +858,65 @@ function escHtml(str) {
 let invData = null;   // { groups: {...}, schemas: {...} }
 let invSelectedGroup = null;
 let invSelectedHost = null;
+let invDirty = false;  // Track unsaved changes
+let _invTriggerBtn = null; // For focus restoration on close
+let _invFieldIdCounter = 0; // unique IDs for label/input pairing
 
 async function openInventoryEditor() {
-  document.getElementById('inv-overlay').classList.add('open');
+  _invTriggerBtn = document.activeElement;
+  const overlay = document.getElementById('inv-overlay');
+  overlay.classList.add('open');
   await loadInventoryRaw();
+  // Focus first focusable element inside modal
+  _invTrapFocus();
 }
 
 function closeInventoryEditor() {
   document.getElementById('inv-overlay').classList.remove('open');
+  invDirty = false;
+  // Restore focus to trigger button
+  if (_invTriggerBtn) { _invTriggerBtn.focus(); _invTriggerBtn = null; }
 }
+
+/* ── Focus trap for modal ─────────────────────────────────── */
+function _invGetFocusable() {
+  const modal = document.querySelector('.inv-modal');
+  if (!modal) return [];
+  return [...modal.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  )].filter(el => !el.disabled && el.offsetParent !== null);
+}
+
+function _invTrapFocus() {
+  const items = _invGetFocusable();
+  if (items.length) items[0].focus();
+}
+
+function _invHandleKeydown(e) {
+  const overlay = document.getElementById('inv-overlay');
+  if (!overlay || !overlay.classList.contains('open')) return;
+
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeInventoryEditor();
+    return;
+  }
+
+  if (e.key === 'Tab') {
+    const items = _invGetFocusable();
+    if (!items.length) return;
+    const first = items[0], last = items[items.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  }
+}
+document.addEventListener('keydown', _invHandleKeydown);
+
+/* ── Mark form dirty on changes ───────────────────────────── */
+function _invMarkDirty() { invDirty = true; }
 
 async function loadInventoryRaw() {
   const groupsEl = document.getElementById('inv-groups');
@@ -890,17 +940,38 @@ function renderInvGroups() {
 
   let html = '';
   for (const [group, gd] of Object.entries(invData.groups)) {
-    html += `<div class="inv-group-name">${escHtml(group)} <button class="inv-add-host-btn" onclick="invAddHostPrompt('${escHtml(group)}')">+ Add</button></div>`;
+    html += `<div class="inv-group-name">${escHtml(group)} <button class="inv-add-host-btn" data-group="${escHtml(group)}">+ Add</button></div>`;
     const hosts = gd.hosts || {};
     for (const hostname of Object.keys(hosts)) {
       const active = (invSelectedGroup === group && invSelectedHost === hostname) ? ' active' : '';
-      html += `<div class="inv-host-item${active}" onclick="invSelectHost('${escHtml(group)}','${escHtml(hostname)}')">${escHtml(hostname)}</div>`;
+      html += `<div class="inv-host-item${active}" tabindex="0" role="button" data-group="${escHtml(group)}" data-host="${escHtml(hostname)}">${escHtml(hostname)}</div>`;
     }
     if (!Object.keys(hosts).length) {
       html += '<div style="color:var(--muted);font-size:0.78rem;padding:4px 10px;font-style:italic;">No hosts</div>';
     }
   }
   el.innerHTML = html;
+
+  // Attach event listeners (no inline onclick)
+  el.querySelectorAll('.inv-host-item').forEach(item => {
+    const g = item.dataset.group, h = item.dataset.host;
+    item.addEventListener('click', () => _invTrySelectHost(g, h));
+    item.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); _invTrySelectHost(g, h); }
+    });
+  });
+  el.querySelectorAll('.inv-add-host-btn').forEach(btn => {
+    const g = btn.dataset.group;
+    btn.addEventListener('click', (e) => { e.stopPropagation(); invShowAddHostForm(g); });
+  });
+}
+
+function _invTrySelectHost(group, hostname) {
+  if (invDirty) {
+    if (!confirm('You have unsaved changes. Discard?')) return;
+  }
+  invDirty = false;
+  invSelectHost(group, hostname);
 }
 
 function invSelectHost(group, hostname) {
@@ -925,7 +996,7 @@ function renderInvEditForm() {
 
   let html = `<div class="inv-edit-title">
     <span>${escHtml(invSelectedHost)} <small style="color:var(--muted);font-weight:400">(${escHtml(invSelectedGroup)})</small></span>
-    <button class="inv-delete-btn" onclick="invDeleteHost()">🗑 Delete</button>
+    <button class="inv-delete-btn" id="inv-delete-btn">🗑 Delete</button>
   </div>`;
   html += '<div id="inv-feedback" class="inv-feedback"></div>';
 
@@ -933,41 +1004,61 @@ function renderInvEditForm() {
     const schemaDef = schema[key];
     const value = hostVars[key] !== undefined ? hostVars[key] : (schemaDef?.default ?? '');
     const fieldType = schemaDef?.type || (typeof value === 'boolean' ? 'bool' : 'string');
+    const fieldId = `inv-field-${++_invFieldIdCounter}`;
 
-    html += `<div class="inv-field"><label>${escHtml(key)}</label>`;
+    html += `<div class="inv-field"><label for="${fieldId}">${escHtml(key)}</label>`;
 
     if (fieldType === 'bool') {
       const isOn = value === true || value === 'true' || value === 'True';
       html += `<div class="inv-toggle-row">
-        <div class="inv-toggle${isOn ? ' on' : ''}" data-key="${escHtml(key)}" onclick="invToggleBool(this)"></div>
+        <div class="inv-toggle${isOn ? ' on' : ''}" data-key="${escHtml(key)}" id="${fieldId}" tabindex="0" role="switch" aria-checked="${isOn}"></div>
         <span style="font-size:0.8rem;color:var(--muted)" id="inv-bool-label-${escHtml(key)}">${isOn ? 'true' : 'false'}</span>
       </div>`;
     } else if (fieldType === 'enum' && schemaDef?.options) {
-      html += `<select data-key="${escHtml(key)}">`;
+      html += `<select data-key="${escHtml(key)}" id="${fieldId}">`;
       for (const opt of schemaDef.options) {
         const sel = String(value) === opt ? ' selected' : '';
         html += `<option value="${escHtml(opt)}"${sel}>${escHtml(opt)}</option>`;
       }
       html += '</select>';
     } else {
-      html += `<input type="text" data-key="${escHtml(key)}" value="${escHtml(String(value))}" placeholder="${fieldType === 'ip' ? '10.10.x.x' : ''}">`;
+      html += `<input type="text" data-key="${escHtml(key)}" id="${fieldId}" value="${escHtml(String(value))}" placeholder="${fieldType === 'ip' ? '10.10.x.x' : ''}">`;
     }
 
     html += '</div>';
   }
 
   html += `<div class="inv-actions">
-    <button class="inv-save-btn" onclick="invSaveHost()">💾 Save</button>
+    <button class="inv-save-btn" id="inv-save-btn">💾 Save</button>
   </div>`;
 
   el.innerHTML = html;
+  invDirty = false;
+
+  // Attach event listeners
+  el.querySelector('#inv-delete-btn')?.addEventListener('click', invDeleteHost);
+  el.querySelector('#inv-save-btn')?.addEventListener('click', invSaveHost);
+
+  // Toggle listeners (click + keyboard)
+  el.querySelectorAll('.inv-toggle[data-key]').forEach(tog => {
+    tog.addEventListener('click', () => invToggleBool(tog));
+    tog.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); invToggleBool(tog); }
+    });
+  });
+
+  // Track dirty state on inputs/selects
+  el.querySelectorAll('input[data-key]').forEach(inp => inp.addEventListener('input', _invMarkDirty));
+  el.querySelectorAll('select[data-key]').forEach(sel => sel.addEventListener('change', _invMarkDirty));
 }
 
 function invToggleBool(toggle) {
   const isOn = toggle.classList.toggle('on');
+  toggle.setAttribute('aria-checked', String(isOn));
   const key = toggle.dataset.key;
   const label = document.getElementById(`inv-bool-label-${key}`);
   if (label) label.textContent = isOn ? 'true' : 'false';
+  _invMarkDirty();
 }
 
 function invCollectFormVars() {
@@ -990,32 +1081,40 @@ function invCollectFormVars() {
   return vars;
 }
 
-function invShowFeedback(msg, ok) {
+function invShowFeedback(msg, type) {
   const fb = document.getElementById('inv-feedback');
   if (!fb) return;
   fb.textContent = msg;
-  fb.className = 'inv-feedback ' + (ok ? 'ok' : 'err');
+  fb.className = 'inv-feedback ' + (type === 'ok' || type === true ? 'ok' : 'err');
   setTimeout(() => { fb.className = 'inv-feedback'; fb.textContent = ''; }, 4000);
 }
 
 async function invSaveHost() {
   const vars = invCollectFormVars();
+  const saveBtn = document.getElementById('inv-save-btn');
+  if (saveBtn) saveBtn.disabled = true;
   try {
     const res = await fetch(`/api/inventory/host/${encodeURIComponent(invSelectedGroup)}/${encodeURIComponent(invSelectedHost)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(vars),
+      body: JSON.stringify({ vars }),
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail || 'Save failed');
     }
-    invShowFeedback('✅ Saved successfully', true);
-    // Refresh data in background
+    invDirty = false;
+    invShowFeedback('✅ Saved successfully', 'ok');
+    // Refresh data and re-render sidebar
     const fresh = await fetch('/api/inventory/raw');
-    if (fresh.ok) invData = await fresh.json();
+    if (fresh.ok) {
+      invData = await fresh.json();
+      renderInvGroups();
+    }
   } catch (e) {
-    invShowFeedback(`❌ ${e.message}`, false);
+    invShowFeedback(`❌ ${e.message}`, 'err');
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
   }
 }
 
@@ -1029,51 +1128,85 @@ async function invDeleteHost() {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(err.detail || 'Delete failed');
     }
+    invDirty = false;
     invSelectedHost = null;
     invSelectedGroup = null;
     await loadInventoryRaw();
+    invShowFeedback('Host deleted successfully', 'ok');
   } catch (e) {
-    invShowFeedback(`❌ ${e.message}`, false);
+    invShowFeedback(`❌ ${e.message}`, 'err');
   }
 }
 
-async function invAddHostPrompt(group) {
-  const hostname = prompt(`New hostname for group "${group}":`);
-  if (!hostname) return;
-  if (!/^[\w.\-]+$/.test(hostname)) { alert('Invalid hostname. Use only letters, numbers, dots, hyphens, and underscores.'); return; }
+/* ── Inline Add Host form (replaces prompt()) ─────────────── */
+function invShowAddHostForm(group) {
+  const el = document.getElementById('inv-edit');
+  const formId = `inv-add-host-input-${++_invFieldIdCounter}`;
+  el.innerHTML = `
+    <div class="inv-edit-title">
+      <span>Add Host to <small style="color:var(--muted);font-weight:400">${escHtml(group)}</small></span>
+    </div>
+    <div id="inv-feedback" class="inv-feedback"></div>
+    <div class="inv-field">
+      <label for="${formId}">Hostname</label>
+      <input type="text" id="${formId}" placeholder="e.g. my-host-01" autofocus>
+    </div>
+    <div class="inv-actions">
+      <button class="inv-save-btn" id="inv-add-host-submit" data-group="${escHtml(group)}">➕ Add Host</button>
+      <button class="inv-delete-btn" id="inv-add-host-cancel" style="margin-left:6px">Cancel</button>
+    </div>`;
 
-  // Build default vars from schema
-  const schema = invData?.schemas?.[group] || {};
-  const vars = {};
-  for (const [key, def] of Object.entries(schema)) {
-    vars[key] = def.default !== undefined ? def.default : '';
-  }
+  const input = el.querySelector(`#${formId}`);
+  const submitBtn = el.querySelector('#inv-add-host-submit');
+  const cancelBtn = el.querySelector('#inv-add-host-cancel');
 
-  try {
-    const res = await fetch(`/api/inventory/host/${encodeURIComponent(group)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hostname, vars }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || 'Add failed');
+  async function doAdd() {
+    const hostname = input.value.trim();
+    if (!hostname) { invShowFeedback('Hostname is required', 'err'); return; }
+    if (!/^[\w.\-]+$/.test(hostname)) { invShowFeedback('Invalid hostname. Use only letters, numbers, dots, hyphens, and underscores.', 'err'); return; }
+
+    const schema = invData?.schemas?.[group] || {};
+    const vars = {};
+    for (const [key, def] of Object.entries(schema)) {
+      vars[key] = def.default !== undefined ? def.default : '';
     }
-    // Reload and select the new host
-    await loadInventoryRaw();
-    invSelectHost(group, hostname);
-  } catch (e) {
-    alert(`Failed to add host: ${e.message}`);
+
+    submitBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/inventory/host/${encodeURIComponent(group)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hostname, vars }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error(err.detail || 'Add failed');
+      }
+      await loadInventoryRaw();
+      invSelectHost(group, hostname);
+      invShowFeedback('✅ Host added successfully', 'ok');
+    } catch (e) {
+      invShowFeedback(`❌ ${e.message}`, 'err');
+      submitBtn.disabled = false;
+    }
   }
+
+  submitBtn.addEventListener('click', doAdd);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
+  cancelBtn.addEventListener('click', () => {
+    if (invSelectedHost) renderInvEditForm();
+    else el.innerHTML = '<div class="inv-edit-placeholder">Select a host to edit</div>';
+  });
+  input.focus();
 }
 </script>
 
 <!-- Inventory Editor Modal -->
-<div class="inv-overlay" id="inv-overlay" onclick="if(event.target===this)closeInventoryEditor()">
-  <div class="inv-modal">
+<div class="inv-overlay" id="inv-overlay">
+  <div class="inv-modal" role="dialog" aria-modal="true" aria-labelledby="inv-title">
     <div class="inv-header">
-      <h2>📋 Inventory Editor</h2>
-      <button class="inv-close" onclick="closeInventoryEditor()">✕</button>
+      <h2 id="inv-title">📋 Inventory Editor</h2>
+      <button class="inv-close" id="inv-close-btn" aria-label="Close dialog">✕</button>
     </div>
     <div class="inv-body">
       <div class="inv-groups" id="inv-groups"></div>
@@ -1083,5 +1216,13 @@ async function invAddHostPrompt(group) {
     </div>
   </div>
 </div>
+<script>
+// Overlay click-to-close + close button (no inline onclick)
+document.getElementById('inv-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeInventoryEditor();
+});
+document.getElementById('inv-close-btn').addEventListener('click', closeInventoryEditor);
+document.getElementById('inv-open-btn').addEventListener('click', openInventoryEditor);
+</script>
 </body>
 </html>
