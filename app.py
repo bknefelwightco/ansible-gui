@@ -194,7 +194,7 @@ async def get_inventory():
 
     groups: dict[str, list[str]] = {}
     for group_name, group_data in data.items():
-        if group_name == "_meta":
+        if group_name in ("_meta", "all", "ungrouped"):
             continue
         if not isinstance(group_data, dict):
             continue
