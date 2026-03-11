@@ -325,10 +325,150 @@
     #last-status.success { color: var(--success); }
     #last-status.fail    { color: var(--danger); }
 
+    /* ── Inventory Editor Modal ────────────────────────────────── */
+    .inv-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .inv-overlay.open { opacity: 1; pointer-events: all; }
+
+    .inv-modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      width: 90vw; max-width: 820px;
+      max-height: 85vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
+    }
+
+    .inv-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .inv-header h2 { font-size: 1.05rem; color: #fff; font-weight: 700; }
+    .inv-close {
+      background: none; border: none; color: var(--muted); font-size: 1.3rem;
+      cursor: pointer; padding: 4px 8px; border-radius: 4px;
+    }
+    .inv-close:hover { color: var(--danger); background: var(--surface2); }
+
+    .inv-body {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      flex: 1; overflow: hidden;
+      min-height: 0;
+    }
+
+    /* sidebar host list */
+    .inv-groups {
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      padding: 12px;
+    }
+    .inv-group-name {
+      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 1px; color: var(--accent2);
+      margin: 14px 0 6px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .inv-group-name:first-child { margin-top: 0; }
+    .inv-add-host-btn {
+      font-size: 0.65rem; padding: 1px 6px; border-radius: 3px;
+      background: var(--surface2); border: 1px solid var(--border);
+      color: var(--muted); cursor: pointer;
+    }
+    .inv-add-host-btn:hover { color: var(--accent2); border-color: var(--accent2); }
+
+    .inv-host-item {
+      padding: 6px 10px; border-radius: 4px; cursor: pointer;
+      font-size: 0.84rem; color: var(--text);
+      transition: background 0.12s;
+    }
+    .inv-host-item:hover { background: var(--surface2); }
+    .inv-host-item.active { background: var(--surface2); border-left: 2px solid var(--accent2); }
+
+    /* edit panel */
+    .inv-edit {
+      overflow-y: auto; padding: 18px 22px;
+      display: flex; flex-direction: column; gap: 14px;
+    }
+    .inv-edit-placeholder {
+      color: var(--muted); font-size: 0.85rem; font-style: italic;
+      margin: auto; text-align: center;
+    }
+    .inv-edit-title {
+      font-size: 0.95rem; font-weight: 700; color: #fff;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .inv-delete-btn {
+      font-size: 0.72rem; padding: 3px 10px; border-radius: 4px;
+      background: transparent; border: 1px solid var(--danger);
+      color: var(--danger); cursor: pointer;
+    }
+    .inv-delete-btn:hover { background: var(--danger); color: #fff; }
+
+    .inv-field { display: flex; flex-direction: column; gap: 4px; }
+    .inv-field label {
+      font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.8px; color: var(--muted);
+    }
+    .inv-field input, .inv-field select {
+      padding: 7px 10px;
+      background: var(--console-bg); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text); font-size: 0.88rem;
+    }
+    .inv-field input:focus, .inv-field select:focus {
+      outline: none; border-color: var(--accent2);
+    }
+    .inv-field select { cursor: pointer; }
+
+    .inv-toggle-row {
+      display: flex; align-items: center; gap: 10px;
+    }
+    .inv-toggle {
+      position: relative; width: 38px; height: 20px;
+      background: var(--border); border-radius: 10px;
+      cursor: pointer; transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    .inv-toggle.on { background: var(--accent2); }
+    .inv-toggle::after {
+      content: ''; position: absolute; top: 2px; left: 2px;
+      width: 16px; height: 16px; border-radius: 50%;
+      background: #fff; transition: transform 0.2s;
+    }
+    .inv-toggle.on::after { transform: translateX(18px); }
+
+    .inv-actions {
+      display: flex; gap: 10px; margin-top: 6px;
+    }
+    .inv-save-btn {
+      padding: 8px 20px; border-radius: var(--radius);
+      font-size: 0.88rem; font-weight: 700; border: none;
+      background: var(--accent2); color: #fff; cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .inv-save-btn:hover { opacity: 0.85; }
+    .inv-save-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .inv-feedback {
+      font-size: 0.78rem; padding: 6px 12px; border-radius: 4px;
+      display: none;
+    }
+    .inv-feedback.ok { display: block; background: rgba(83,194,139,0.15); color: var(--success); }
+    .inv-feedback.err { display: block; background: rgba(233,69,96,0.15); color: var(--danger); }
+
     /* ── Responsive ───────────────────────────────────────────── */
     @media (max-width: 700px) {
       main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
       .sidebar { max-height: 45vh; }
+      .inv-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+      .inv-groups { max-height: 200px; border-right: none; border-bottom: 1px solid var(--border); }
     }
   </style>
 </head>
@@ -338,9 +478,12 @@
   <!-- Header -->
   <header>
     <h1>Ansible <span>GUI</span></h1>
-    <div class="conn-badge">
-      <div class="conn-dot" id="conn-dot"></div>
-      <span id="conn-label">Connecting…</span>
+    <div style="display:flex;align-items:center;gap:14px;">
+      <button onclick="openInventoryEditor()" style="padding:6px 14px;border-radius:var(--radius);font-size:0.8rem;font-weight:600;border:1px solid var(--accent2);background:transparent;color:var(--accent2);cursor:pointer;transition:background 0.15s,color 0.15s;" onmouseover="this.style.background='var(--accent2)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--accent2)'">📋 Inventory Editor</button>
+      <div class="conn-badge">
+        <div class="conn-dot" id="conn-dot"></div>
+        <span id="conn-label">Connecting…</span>
+      </div>
     </div>
   </header>
 
@@ -708,6 +851,237 @@ function clearConsole() {
 function escHtml(str) {
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+/* ══════════════════════════════════════════════════════════════
+   Inventory Editor
+   ══════════════════════════════════════════════════════════════ */
+let invData = null;   // { groups: {...}, schemas: {...} }
+let invSelectedGroup = null;
+let invSelectedHost = null;
+
+async function openInventoryEditor() {
+  document.getElementById('inv-overlay').classList.add('open');
+  await loadInventoryRaw();
+}
+
+function closeInventoryEditor() {
+  document.getElementById('inv-overlay').classList.remove('open');
+}
+
+async function loadInventoryRaw() {
+  const groupsEl = document.getElementById('inv-groups');
+  const editEl = document.getElementById('inv-edit');
+  groupsEl.innerHTML = '<span class="loading-msg">Loading…</span>';
+  editEl.innerHTML = '<div class="inv-edit-placeholder">Select a host to edit</div>';
+
+  try {
+    const res = await fetch('/api/inventory/raw');
+    if (!res.ok) throw new Error(await res.text());
+    invData = await res.json();
+    renderInvGroups();
+  } catch (e) {
+    groupsEl.innerHTML = `<span class="empty-msg" style="color:var(--danger)">⚠ ${escHtml(String(e))}</span>`;
+  }
+}
+
+function renderInvGroups() {
+  const el = document.getElementById('inv-groups');
+  if (!invData || !invData.groups) { el.innerHTML = '<span class="empty-msg">No groups</span>'; return; }
+
+  let html = '';
+  for (const [group, gd] of Object.entries(invData.groups)) {
+    html += `<div class="inv-group-name">${escHtml(group)} <button class="inv-add-host-btn" onclick="invAddHostPrompt('${escHtml(group)}')">+ Add</button></div>`;
+    const hosts = gd.hosts || {};
+    for (const hostname of Object.keys(hosts)) {
+      const active = (invSelectedGroup === group && invSelectedHost === hostname) ? ' active' : '';
+      html += `<div class="inv-host-item${active}" onclick="invSelectHost('${escHtml(group)}','${escHtml(hostname)}')">${escHtml(hostname)}</div>`;
+    }
+    if (!Object.keys(hosts).length) {
+      html += '<div style="color:var(--muted);font-size:0.78rem;padding:4px 10px;font-style:italic;">No hosts</div>';
+    }
+  }
+  el.innerHTML = html;
+}
+
+function invSelectHost(group, hostname) {
+  invSelectedGroup = group;
+  invSelectedHost = hostname;
+  renderInvGroups();
+  renderInvEditForm();
+}
+
+function renderInvEditForm() {
+  const el = document.getElementById('inv-edit');
+  if (!invSelectedGroup || !invSelectedHost || !invData) {
+    el.innerHTML = '<div class="inv-edit-placeholder">Select a host to edit</div>';
+    return;
+  }
+
+  const hostVars = invData.groups[invSelectedGroup]?.hosts?.[invSelectedHost] || {};
+  const schema = invData.schemas?.[invSelectedGroup] || {};
+
+  // Merge: show schema fields first, then any extra vars from the host
+  const allKeys = new Set([...Object.keys(schema), ...Object.keys(hostVars)]);
+
+  let html = `<div class="inv-edit-title">
+    <span>${escHtml(invSelectedHost)} <small style="color:var(--muted);font-weight:400">(${escHtml(invSelectedGroup)})</small></span>
+    <button class="inv-delete-btn" onclick="invDeleteHost()">🗑 Delete</button>
+  </div>`;
+  html += '<div id="inv-feedback" class="inv-feedback"></div>';
+
+  for (const key of allKeys) {
+    const schemaDef = schema[key];
+    const value = hostVars[key] !== undefined ? hostVars[key] : (schemaDef?.default ?? '');
+    const fieldType = schemaDef?.type || (typeof value === 'boolean' ? 'bool' : 'string');
+
+    html += `<div class="inv-field"><label>${escHtml(key)}</label>`;
+
+    if (fieldType === 'bool') {
+      const isOn = value === true || value === 'true' || value === 'True';
+      html += `<div class="inv-toggle-row">
+        <div class="inv-toggle${isOn ? ' on' : ''}" data-key="${escHtml(key)}" onclick="invToggleBool(this)"></div>
+        <span style="font-size:0.8rem;color:var(--muted)" id="inv-bool-label-${escHtml(key)}">${isOn ? 'true' : 'false'}</span>
+      </div>`;
+    } else if (fieldType === 'enum' && schemaDef?.options) {
+      html += `<select data-key="${escHtml(key)}">`;
+      for (const opt of schemaDef.options) {
+        const sel = String(value) === opt ? ' selected' : '';
+        html += `<option value="${escHtml(opt)}"${sel}>${escHtml(opt)}</option>`;
+      }
+      html += '</select>';
+    } else {
+      html += `<input type="text" data-key="${escHtml(key)}" value="${escHtml(String(value))}" placeholder="${fieldType === 'ip' ? '10.10.x.x' : ''}">`;
+    }
+
+    html += '</div>';
+  }
+
+  html += `<div class="inv-actions">
+    <button class="inv-save-btn" onclick="invSaveHost()">💾 Save</button>
+  </div>`;
+
+  el.innerHTML = html;
+}
+
+function invToggleBool(toggle) {
+  const isOn = toggle.classList.toggle('on');
+  const key = toggle.dataset.key;
+  const label = document.getElementById(`inv-bool-label-${key}`);
+  if (label) label.textContent = isOn ? 'true' : 'false';
+}
+
+function invCollectFormVars() {
+  const el = document.getElementById('inv-edit');
+  const vars = {};
+
+  // inputs
+  el.querySelectorAll('input[data-key]').forEach(inp => {
+    vars[inp.dataset.key] = inp.value;
+  });
+  // selects
+  el.querySelectorAll('select[data-key]').forEach(sel => {
+    vars[sel.dataset.key] = sel.value;
+  });
+  // toggles (booleans)
+  el.querySelectorAll('.inv-toggle[data-key]').forEach(tog => {
+    vars[tog.dataset.key] = tog.classList.contains('on');
+  });
+
+  return vars;
+}
+
+function invShowFeedback(msg, ok) {
+  const fb = document.getElementById('inv-feedback');
+  if (!fb) return;
+  fb.textContent = msg;
+  fb.className = 'inv-feedback ' + (ok ? 'ok' : 'err');
+  setTimeout(() => { fb.className = 'inv-feedback'; fb.textContent = ''; }, 4000);
+}
+
+async function invSaveHost() {
+  const vars = invCollectFormVars();
+  try {
+    const res = await fetch(`/api/inventory/host/${encodeURIComponent(invSelectedGroup)}/${encodeURIComponent(invSelectedHost)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(vars),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Save failed');
+    }
+    invShowFeedback('✅ Saved successfully', true);
+    // Refresh data in background
+    const fresh = await fetch('/api/inventory/raw');
+    if (fresh.ok) invData = await fresh.json();
+  } catch (e) {
+    invShowFeedback(`❌ ${e.message}`, false);
+  }
+}
+
+async function invDeleteHost() {
+  if (!confirm(`Delete host "${invSelectedHost}" from group "${invSelectedGroup}"?\n\nThis cannot be undone (a backup will be created).`)) return;
+  try {
+    const res = await fetch(`/api/inventory/host/${encodeURIComponent(invSelectedGroup)}/${encodeURIComponent(invSelectedHost)}`, {
+      method: 'DELETE',
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Delete failed');
+    }
+    invSelectedHost = null;
+    invSelectedGroup = null;
+    await loadInventoryRaw();
+  } catch (e) {
+    invShowFeedback(`❌ ${e.message}`, false);
+  }
+}
+
+async function invAddHostPrompt(group) {
+  const hostname = prompt(`New hostname for group "${group}":`);
+  if (!hostname) return;
+  if (!/^[\w.\-]+$/.test(hostname)) { alert('Invalid hostname. Use only letters, numbers, dots, hyphens, and underscores.'); return; }
+
+  // Build default vars from schema
+  const schema = invData?.schemas?.[group] || {};
+  const vars = {};
+  for (const [key, def] of Object.entries(schema)) {
+    vars[key] = def.default !== undefined ? def.default : '';
+  }
+
+  try {
+    const res = await fetch(`/api/inventory/host/${encodeURIComponent(group)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hostname, vars }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || 'Add failed');
+    }
+    // Reload and select the new host
+    await loadInventoryRaw();
+    invSelectHost(group, hostname);
+  } catch (e) {
+    alert(`Failed to add host: ${e.message}`);
+  }
+}
 </script>
+
+<!-- Inventory Editor Modal -->
+<div class="inv-overlay" id="inv-overlay" onclick="if(event.target===this)closeInventoryEditor()">
+  <div class="inv-modal">
+    <div class="inv-header">
+      <h2>📋 Inventory Editor</h2>
+      <button class="inv-close" onclick="closeInventoryEditor()">✕</button>
+    </div>
+    <div class="inv-body">
+      <div class="inv-groups" id="inv-groups"></div>
+      <div class="inv-edit" id="inv-edit">
+        <div class="inv-edit-placeholder">Select a host to edit</div>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
