@@ -505,13 +505,19 @@
 
       <!-- Tags -->
       <section id="tags-section">
-        <h2>Tags <small style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">(optional — leave all unchecked to run all roles)</small></h2>
-        <div class="select-actions">
-          <button onclick="selectAll('tag')">All</button>
-          <button onclick="selectNone('tag')">None</button>
+        <h2 style="cursor:pointer;user-select:none;" onclick="toggleTagsPanel()">
+          <span id="tags-chevron" style="display:inline-block;transition:transform 0.2s;transform:rotate(-90deg);margin-right:4px;">▶</span>
+          Tags <small style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">(optional — leave all unchecked to run all roles)</small>
+          <span id="tags-count" style="font-weight:400;font-size:0.7rem;color:var(--accent2);margin-left:6px;"></span>
+        </h2>
+        <div id="tags-panel" style="display:none;">
+          <div class="select-actions">
+            <button onclick="selectAll('tag')">All</button>
+            <button onclick="selectNone('tag')">None</button>
+          </div>
+          <div id="tags-list"><span class="empty-msg">Enter vault password below, then click Load Tags.</span></div>
+          <button id="load-tags-btn" onclick="loadTags()" style="margin-top:8px;padding:6px 12px;border-radius:var(--radius);font-size:0.82rem;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text);transition:border-color 0.2s,color 0.2s;">🏷️ Load Tags</button>
         </div>
-        <div id="tags-list"><span class="empty-msg">Enter vault password below, then click Load Tags.</span></div>
-        <button id="load-tags-btn" onclick="loadTags()" style="margin-top:8px;padding:6px 12px;border-radius:var(--radius);font-size:0.82rem;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text);transition:border-color 0.2s,color 0.2s;">🏷️ Load Tags</button>
       </section>
 
       <!-- Vault -->
@@ -638,7 +644,7 @@ async function loadTags() {
     for (const tag of tags) {
       const id = `tag-${escHtml(tag)}`;
       html += `<li><label>
-        <input type="checkbox" class="tag-cb" id="${id}" value="${escHtml(tag)}">
+        <input type="checkbox" class="tag-cb" id="${id}" value="${escHtml(tag)}" onchange="updateTagsCount()">
         ${escHtml(tag)}
       </label></li>`;
     }
@@ -678,10 +684,25 @@ function renderStatus(s) {
 function selectAll(type) {
   document.querySelectorAll(`.${type}-cb`).forEach(cb => cb.checked = true);
   updateRunBtn();
+  if (type === 'tag') updateTagsCount();
 }
 function selectNone(type) {
   document.querySelectorAll(`.${type}-cb`).forEach(cb => cb.checked = false);
   updateRunBtn();
+  if (type === 'tag') updateTagsCount();
+}
+
+/* ── Tags collapse ─────────────────────────────────────────── */
+let tagsPanelOpen = false;
+function toggleTagsPanel() {
+  tagsPanelOpen = !tagsPanelOpen;
+  document.getElementById('tags-panel').style.display = tagsPanelOpen ? 'block' : 'none';
+  document.getElementById('tags-chevron').style.transform = tagsPanelOpen ? 'rotate(0deg)' : 'rotate(-90deg)';
+}
+function updateTagsCount() {
+  const checked = document.querySelectorAll('.tag-cb:checked').length;
+  const el = document.getElementById('tags-count');
+  el.textContent = checked > 0 ? `(${checked} selected)` : '';
 }
 
 /* ── Run button state ──────────────────────────────────────── */
