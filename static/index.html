@@ -1131,8 +1131,8 @@ async function invDeleteHost() {
     invDirty = false;
     invSelectedHost = null;
     invSelectedGroup = null;
-    await loadInventoryRaw();
     invShowFeedback('Host deleted successfully', 'ok');
+    await loadInventoryRaw();
   } catch (e) {
     invShowFeedback(`❌ ${e.message}`, 'err');
   }
@@ -1140,6 +1140,10 @@ async function invDeleteHost() {
 
 /* ── Inline Add Host form (replaces prompt()) ─────────────── */
 function invShowAddHostForm(group) {
+  if (invDirty) {
+    if (!confirm('You have unsaved changes. Discard?')) return;
+  }
+  invDirty = false;
   const el = document.getElementById('inv-edit');
   const formId = `inv-add-host-input-${++_invFieldIdCounter}`;
   el.innerHTML = `

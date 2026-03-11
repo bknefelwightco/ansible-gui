@@ -176,14 +176,14 @@ class TestGetInventoryRaw:
 
 class TestUpdateHost:
     def test_update_existing_host(self, client, inv_path):
-        payload = {
+        payload = {"vars": {
             "ansible_host": "192.168.1.200",
             "host_depart": "corp",
             "host_gpu": False,
             "host_type": "desktop",
             "remote_desktop_user": "jdoe",
             "project_install": True,
-        }
+        }}
         r = client.put("/api/inventory/host/Windows/DESKTOP-ABC", json=payload)
         assert r.status_code == 200
         body = r.json()
@@ -191,14 +191,14 @@ class TestUpdateHost:
         assert body["hostname"] == "DESKTOP-ABC"
 
     def test_update_persisted_to_yaml(self, client, inv_path):
-        payload = {
+        payload = {"vars": {
             "ansible_host": "192.168.1.200",
             "host_depart": "corp",
             "host_gpu": False,
             "host_type": "desktop",
             "remote_desktop_user": "jdoe",
             "project_install": True,
-        }
+        }}
         client.put("/api/inventory/host/Windows/DESKTOP-ABC", json=payload)
         data = read_yaml(inv_path)
         host = data["all"]["children"]["Windows"]["hosts"]["DESKTOP-ABC"]
@@ -206,14 +206,14 @@ class TestUpdateHost:
         assert str(host["host_depart"]) == "corp"
 
     def test_update_creates_backup(self, client, inv_path):
-        payload = {
+        payload = {"vars": {
             "ansible_host": "192.168.1.200",
             "host_depart": "corp",
             "host_gpu": False,
             "host_type": "desktop",
             "remote_desktop_user": "jdoe",
             "project_install": False,
-        }
+        }}
         client.put("/api/inventory/host/Windows/DESKTOP-ABC", json=payload)
         bak_path = inv_path.parent / f".{inv_path.name}.bak"
         assert bak_path.exists(), "Backup file was not created"
@@ -221,14 +221,14 @@ class TestUpdateHost:
     def test_update_backup_contains_original(self, client, inv_path):
         """Backup should contain the original content before the write."""
         original_content = inv_path.read_text()
-        payload = {
+        payload = {"vars": {
             "ansible_host": "10.0.0.1",
             "host_depart": "corp",
             "host_gpu": True,
             "host_type": "laptop",
             "remote_desktop_user": "none",
             "project_install": False,
-        }
+        }}
         client.put("/api/inventory/host/Windows/DESKTOP-ABC", json=payload)
         bak_path = inv_path.parent / f".{inv_path.name}.bak"
         assert bak_path.read_text() == original_content
@@ -236,27 +236,27 @@ class TestUpdateHost:
     def test_update_nonexistent_host_404(self, client):
         r = client.put(
             "/api/inventory/host/Windows/DOES-NOT-EXIST",
-            json={"ansible_host": "1.2.3.4"},
+            json={"vars": {"ansible_host": "1.2.3.4"}},
         )
         assert r.status_code == 404
 
     def test_update_nonexistent_group_404(self, client):
         r = client.put(
             "/api/inventory/host/NoSuchGroup/DESKTOP-ABC",
-            json={"ansible_host": "1.2.3.4"},
+            json={"vars": {"ansible_host": "1.2.3.4"}},
         )
         assert r.status_code == 404
 
     def test_comments_preserved_after_update(self, client, inv_path):
         """ruamel.yaml should preserve inline YAML comments on write-back."""
-        payload = {
+        payload = {"vars": {
             "ansible_host": "192.168.1.199",
             "host_depart": "acct",
             "host_gpu": False,
             "host_type": "desktop",
             "remote_desktop_user": "jsmith",
             "project_install": False,
-        }
+        }}
         client.put("/api/inventory/host/Windows/DESKTOP-ABC", json=payload)
         written = inv_path.read_text()
         # The comment on DESKTOP-ABC's ansible_host line should still be there
@@ -443,21 +443,21 @@ class TestInputValidation:
     def test_put_bad_ip_rejected(self, client):
         r = client.put(
             "/api/inventory/host/Windows/DESKTOP-ABC",
-            json={"ansible_host": "not-an-ip", "host_depart": "acct"},
+            json={"vars": {"ansible_host": "not-an-ip", "host_depart": "acct"}},
         )
         assert r.status_code == 400
 
     def test_put_valid_ip_accepted(self, client):
         r = client.put(
             "/api/inventory/host/Windows/DESKTOP-ABC",
-            json={
+            json={"vars": {
                 "ansible_host": "10.20.30.40",
                 "host_depart": "acct",
                 "host_gpu": False,
                 "host_type": "desktop",
                 "remote_desktop_user": "jsmith",
                 "project_install": False,
-            },
+            }},
         )
         assert r.status_code == 200
 
@@ -495,14 +495,14 @@ class TestCommentPreservation:
 
     def test_yaml_parses_correctly_after_roundtrip(self, client, inv_path):
         """After a PUT, the written YAML must be parseable and structurally valid."""
-        payload = {
+        payload = {"vars": {
             "ansible_host": "192.168.1.100",
             "host_depart": "acct",
             "host_gpu": False,
             "host_type": "desktop",
             "remote_desktop_user": "jsmith",
             "project_install": False,
-        }
+        }}
         client.put("/api/inventory/host/Windows/DESKTOP-ABC", json=payload)
         # Must not raise
         data = read_yaml(inv_path)
@@ -512,14 +512,14 @@ class TestCommentPreservation:
     def test_group_level_vars_retained_in_file(self, client, inv_path):
         """Group-level vars (including secrets) must persist in the file even if
         not exposed by the API."""
-        payload = {
+        payload = {"vars": {
             "ansible_host": "192.168.1.100",
             "host_depart": "acct",
             "host_gpu": False,
             "host_type": "desktop",
             "remote_desktop_user": "jsmith",
             "project_install": False,
-        }
+        }}
         client.put("/api/inventory/host/Windows/DESKTOP-ABC", json=payload)
         data = read_yaml(inv_path)
         windows_vars = data["all"]["children"]["Windows"].get("vars", {})
