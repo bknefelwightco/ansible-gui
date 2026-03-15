@@ -4,565 +4,215 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ansible GUI</title>
-  <style>
-    /* ── Reset & Base ─────────────────────────────────────────── */
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg:        #1a1a2e;
-      --surface:   #16213e;
-      --surface2:  #0f3460;
-      --accent:    #e94560;
-      --accent2:   #53c28b;
-      --text:      #e0e0e0;
-      --muted:     #8899aa;
-      --border:    #2a3a5a;
-      --console-bg:#0d1117;
-      --success:   #53c28b;
-      --danger:    #e94560;
-      --warn:      #f0a500;
-      --radius:    8px;
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style type="text/tailwindcss">
+    @theme {
+      --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', ui-monospace, monospace;
     }
 
-    html, body {
-      height: 100%;
-      font-family: 'Segoe UI', system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      font-size: 14px;
-      line-height: 1.6;
-    }
+    /* ── Console line coloring ──────────────────────────────── */
+    #console .line         { display: block; }
+    #console .line.ok      { color: #34d399; }
+    #console .line.fail    { color: #f87171; }
+    #console .line.warn    { color: #fbbf24; }
+    #console .line.meta    { color: #64748b; font-style: italic; }
+    #console .line.recap   { font-weight: bold; color: #60a5fa; }
 
-    /* ── Layout ───────────────────────────────────────────────── */
-    .app {
-      display: grid;
-      grid-template-rows: auto 1fr auto;
-      min-height: 100vh;
-    }
+    /* ── Scrollbar ──────────────────────────────────────────── */
+    #console::-webkit-scrollbar       { width: 6px; }
+    #console::-webkit-scrollbar-track { background: transparent; }
+    #console::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 
-    header {
-      background: var(--surface2);
-      padding: 14px 24px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 2px solid var(--accent);
-    }
+    .sidebar::-webkit-scrollbar       { width: 5px; }
+    .sidebar::-webkit-scrollbar-track { background: transparent; }
+    .sidebar::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 
-    header h1 {
-      font-size: 1.4rem;
-      font-weight: 700;
-      letter-spacing: 1px;
-      color: #fff;
-    }
+    .inv-groups::-webkit-scrollbar       { width: 5px; }
+    .inv-groups::-webkit-scrollbar-track { background: transparent; }
+    .inv-groups::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 
-    header h1 span { color: var(--accent2); }
+    .inv-edit::-webkit-scrollbar       { width: 5px; }
+    .inv-edit::-webkit-scrollbar-track { background: transparent; }
+    .inv-edit::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 
-    .conn-badge {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-
-    .conn-dot {
-      width: 9px; height: 9px;
-      border-radius: 50%;
-      background: var(--warn);
-      transition: background 0.3s;
-    }
-    .conn-dot.ok   { background: var(--success); }
-    .conn-dot.fail { background: var(--danger); }
-
-    main {
-      display: grid;
-      grid-template-columns: 340px 1fr;
-      gap: 0;
-      overflow: hidden;
-      height: calc(100vh - 54px - 40px);
-    }
-
-    /* ── Sidebar ──────────────────────────────────────────────── */
-    .sidebar {
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      overflow-y: auto;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
-    }
-
-    section h2 {
-      font-size: 0.75rem;
-      font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 1.2px;
-      color: var(--muted);
-      margin-bottom: 10px;
-      padding-bottom: 4px;
-      border-bottom: 1px solid var(--border);
-    }
-
-    /* ── Host/Tag lists ───────────────────────────────────────── */
-    .group-label {
-      font-size: 0.7rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--accent2);
-      margin: 10px 0 4px;
-    }
-
-    .check-list {
-      list-style: none;
-      display: flex;
-      flex-direction: column;
-      gap: 3px;
-    }
-
-    .check-list li label {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 6px;
-      border-radius: 4px;
-      cursor: pointer;
-      transition: background 0.15s;
-      font-size: 0.85rem;
-    }
-
-    .check-list li label:hover { background: var(--surface2); }
-
-    .check-list li input[type=checkbox] {
-      accent-color: var(--accent2);
-      width: 15px; height: 15px;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-
-    .select-actions {
-      display: flex;
-      gap: 6px;
-      margin-bottom: 6px;
-    }
-
-    .select-actions button {
-      font-size: 0.72rem;
-      padding: 2px 8px;
-      border-radius: 4px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      color: var(--muted);
-      cursor: pointer;
-      transition: color 0.15s, border-color 0.15s;
-    }
-    .select-actions button:hover { color: var(--text); border-color: var(--accent2); }
-
-    .loading-msg, .empty-msg {
-      color: var(--muted);
-      font-size: 0.8rem;
-      font-style: italic;
-    }
-
-    /* ── Vault password ───────────────────────────────────────── */
-    .vault-section input {
-      width: 100%;
-      padding: 8px 10px;
-      background: var(--console-bg);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      color: var(--text);
-      font-size: 0.9rem;
-      font-family: monospace;
-      transition: border-color 0.2s;
-      margin-top: 2px;
-    }
-    .vault-section input:focus {
-      outline: none;
-      border-color: var(--accent2);
-    }
-
-    /* ── Run button ───────────────────────────────────────────── */
-    .run-section {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    #run-btn {
-      padding: 10px;
-      border-radius: var(--radius);
-      font-size: 0.95rem;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      cursor: pointer;
-      border: none;
-      background: var(--accent2);   /* green — not red */
-      color: #fff;
-      transition: opacity 0.2s, transform 0.1s;
-    }
-    #run-btn:enabled:hover { opacity: 0.85; transform: translateY(-1px); }
-    #run-btn:disabled {
-      opacity: 0.35;
-      cursor: not-allowed;
-      transform: none;
-    }
-    #run-btn.running {
-      background: #c0392b;          /* clear red = stop/danger */
-      animation: pulse 1.5s infinite;
-    }
-
-    @keyframes pulse {
+    /* ── Pulse animation for running state ──────────────────── */
+    @keyframes pulse-run {
       0%, 100% { opacity: 1; }
       50% { opacity: 0.6; }
     }
+    .running { animation: pulse-run 1.5s infinite; }
 
-    .run-hint {
-      font-size: 0.72rem;
-      color: var(--muted);
-      text-align: center;
-      min-height: 1em;
-    }
-
-    /* ── Status bar ───────────────────────────────────────────── */
-    .status-bar {
-      font-size: 0.78rem;
-      padding: 4px 8px;
-      border-radius: 4px;
-      background: var(--surface2);
-      color: var(--muted);
-      min-height: 26px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .status-bar.success { color: var(--success); border-left: 3px solid var(--success); }
-    .status-bar.fail    { color: var(--danger);  border-left: 3px solid var(--danger); }
-
-    /* ── Console area ─────────────────────────────────────────── */
-    .console-area {
-      display: flex;
-      flex-direction: column;
-      background: var(--console-bg);
-      overflow: hidden;
-    }
-
-    .console-toolbar {
-      background: var(--surface);
-      padding: 8px 14px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-
-    .console-toolbar span {
-      font-size: 0.75rem;
-      color: var(--muted);
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-    }
-
-    .console-toolbar-btns {
-      display: flex;
-      gap: 6px;
-    }
-
-    .clear-btn {
-      font-size: 0.72rem;
-      padding: 2px 10px;
-      border-radius: 4px;
-      background: transparent;
-      border: 1px solid var(--border);
-      color: var(--muted);
-      cursor: pointer;
-    }
-    .clear-btn:hover { color: var(--text); border-color: var(--accent); }
-
-    #console {
-      flex: 1;
-      overflow-y: auto;
-      padding: 14px 16px;
-      font-family: 'Cascadia Code', 'Fira Code', 'Courier New', monospace;
-      font-size: 0.82rem;
-      line-height: 1.7;
-      white-space: pre-wrap;
-      word-break: break-word;
-      overflow-wrap: break-word;
-      color: #c9d1d9;
-    }
-
-    #console .line { display: block; }
-    #console .line.ok   { color: var(--success); }
-    #console .line.fail { color: var(--danger); }
-    #console .line.warn { color: var(--warn); }
-    #console .line.meta { color: #7d8590; font-style: italic; }
-    #console .line.recap { font-weight: bold; color: #58a6ff; }
-
-    /* scrollbar */
-    #console::-webkit-scrollbar { width: 6px; }
-    #console::-webkit-scrollbar-track { background: transparent; }
-    #console::-webkit-scrollbar-thumb { background: var(--surface2); border-radius: 3px; }
-
-    /* ── Footer ───────────────────────────────────────────────── */
-    footer {
-      background: var(--surface);
-      padding: 0 16px;
-      border-top: 1px solid var(--border);
-      height: 40px;
-      display: flex;
-      align-items: center;
-      gap: 16px;
-    }
-
-    #last-status {
-      font-size: 0.75rem;
-      color: var(--muted);
-    }
-    #last-status.success { color: var(--success); }
-    #last-status.fail    { color: var(--danger); }
-
-    /* ── Inventory Editor Modal ────────────────────────────────── */
-    .inv-overlay {
-      position: fixed; inset: 0;
-      background: rgba(0,0,0,0.6);
-      z-index: 1000;
-      display: flex; align-items: center; justify-content: center;
-      opacity: 0; pointer-events: none;
-      transition: opacity 0.2s;
-    }
-    .inv-overlay.open { opacity: 1; pointer-events: all; }
-
-    .inv-modal {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      width: 90vw; max-width: 820px;
-      max-height: 85vh;
-      display: flex; flex-direction: column;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.5);
-    }
-
-    .inv-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 14px 20px;
-      border-bottom: 1px solid var(--border);
-    }
-    .inv-header h2 { font-size: 1.05rem; color: #fff; font-weight: 700; }
-    .inv-close {
-      background: none; border: none; color: var(--muted); font-size: 1.3rem;
-      cursor: pointer; padding: 4px 8px; border-radius: 4px;
-    }
-    .inv-close:hover { color: var(--danger); background: var(--surface2); }
-
-    .inv-body {
-      display: grid;
-      grid-template-columns: 240px 1fr;
-      flex: 1; overflow: hidden;
-      min-height: 0;
-    }
-
-    /* sidebar host list */
-    .inv-groups {
-      border-right: 1px solid var(--border);
-      overflow-y: auto;
-      padding: 12px;
-    }
-    .inv-group-name {
-      font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 1px; color: var(--accent2);
-      margin: 14px 0 6px; display: flex; align-items: center; justify-content: space-between;
-    }
-    .inv-group-name:first-child { margin-top: 0; }
-    .inv-add-host-btn {
-      font-size: 0.65rem; padding: 1px 6px; border-radius: 3px;
-      background: var(--surface2); border: 1px solid var(--border);
-      color: var(--muted); cursor: pointer;
-    }
-    .inv-add-host-btn:hover { color: var(--accent2); border-color: var(--accent2); }
-
-    .inv-host-item {
-      padding: 6px 10px; border-radius: 4px; cursor: pointer;
-      font-size: 0.84rem; color: var(--text);
-      transition: background 0.12s;
-    }
-    .inv-host-item:hover { background: var(--surface2); }
-    .inv-host-item.active { background: var(--surface2); border-left: 2px solid var(--accent2); }
-
-    /* edit panel */
-    .inv-edit {
-      overflow-y: auto; padding: 18px 22px;
-      display: flex; flex-direction: column; gap: 14px;
-    }
-    .inv-edit-placeholder {
-      color: var(--muted); font-size: 0.85rem; font-style: italic;
-      margin: auto; text-align: center;
-    }
-    .inv-edit-title {
-      font-size: 0.95rem; font-weight: 700; color: #fff;
-      display: flex; align-items: center; justify-content: space-between;
-    }
-    .inv-delete-btn {
-      font-size: 0.72rem; padding: 3px 10px; border-radius: 4px;
-      background: transparent; border: 1px solid var(--danger);
-      color: var(--danger); cursor: pointer;
-    }
-    .inv-delete-btn:hover { background: var(--danger); color: #fff; }
-
-    .inv-field { display: flex; flex-direction: column; gap: 4px; }
-    .inv-field label {
-      font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
-      letter-spacing: 0.8px; color: var(--muted);
-    }
-    .inv-field input, .inv-field select {
-      padding: 7px 10px;
-      background: var(--console-bg); border: 1px solid var(--border);
-      border-radius: var(--radius); color: var(--text); font-size: 0.88rem;
-    }
-    .inv-field input:focus, .inv-field select:focus {
-      outline: none; border-color: var(--accent2);
-    }
-    .inv-field select { cursor: pointer; }
-
-    .inv-toggle-row {
-      display: flex; align-items: center; gap: 10px;
-    }
+    /* ── Toggle switch ──────────────────────────────────────── */
     .inv-toggle {
-      position: relative; width: 38px; height: 20px;
-      background: var(--border); border-radius: 10px;
-      cursor: pointer; transition: background 0.2s;
+      position: relative;
+      width: 38px;
+      height: 20px;
+      background: #475569;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: background 0.2s;
       flex-shrink: 0;
     }
-    .inv-toggle.on { background: var(--accent2); }
+    .inv-toggle.on { background: #34d399; }
     .inv-toggle::after {
-      content: ''; position: absolute; top: 2px; left: 2px;
-      width: 16px; height: 16px; border-radius: 50%;
-      background: #fff; transition: transform 0.2s;
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform 0.2s;
     }
     .inv-toggle.on::after { transform: translateX(18px); }
 
-    .inv-actions {
-      display: flex; gap: 10px; margin-top: 6px;
+    /* ── Modal transition ───────────────────────────────────── */
+    .inv-overlay {
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s;
     }
-    .inv-save-btn {
-      padding: 8px 20px; border-radius: var(--radius);
-      font-size: 0.88rem; font-weight: 700; border: none;
-      background: var(--accent2); color: #fff; cursor: pointer;
-      transition: opacity 0.15s;
+    .inv-overlay.open {
+      opacity: 1;
+      pointer-events: all;
     }
-    .inv-save-btn:hover { opacity: 0.85; }
-    .inv-save-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-    .inv-feedback {
-      font-size: 0.78rem; padding: 6px 12px; border-radius: 4px;
-      display: none;
-    }
-    .inv-feedback.ok { display: block; background: rgba(83,194,139,0.15); color: var(--success); }
-    .inv-feedback.err { display: block; background: rgba(233,69,96,0.15); color: var(--danger); }
-
-    /* ── Responsive ───────────────────────────────────────────── */
-    @media (max-width: 700px) {
-      main { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-      .sidebar { max-height: 45vh; }
-      .inv-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
-      .inv-groups { max-height: 200px; border-right: none; border-bottom: 1px solid var(--border); }
-    }
+    /* ── Feedback flash ─────────────────────────────────────── */
+    .inv-feedback { display: none; }
+    .inv-feedback.ok  { display: block; background: rgba(52,211,153,0.12); color: #34d399; }
+    .inv-feedback.err { display: block; background: rgba(248,113,113,0.12); color: #f87171; }
   </style>
 </head>
-<body>
-<div class="app">
+<body class="bg-slate-900 text-gray-100 font-sans antialiased">
+<div class="grid grid-rows-[auto_1fr_auto] min-h-screen">
 
   <!-- Header -->
-  <header>
-    <h1>Ansible <span>GUI</span></h1>
-    <div style="display:flex;align-items:center;gap:14px;">
-      <button id="inv-open-btn" style="padding:6px 14px;border-radius:var(--radius);font-size:0.8rem;font-weight:600;border:1px solid var(--accent2);background:transparent;color:var(--accent2);cursor:pointer;transition:background 0.15s,color 0.15s;" onmouseover="this.style.background='var(--accent2)';this.style.color='#fff'" onmouseout="this.style.background='transparent';this.style.color='var(--accent2)'">📋 Inventory Editor</button>
-      <div class="conn-badge">
-        <div class="conn-dot" id="conn-dot"></div>
+  <header class="bg-slate-800 border-b border-slate-600 px-6 py-3.5 flex items-center justify-between">
+    <h1 class="text-xl font-bold tracking-wide text-white">Ansible <span class="text-emerald-400">GUI</span></h1>
+    <div class="flex items-center gap-4">
+      <button id="inv-open-btn"
+        class="px-4 py-1.5 rounded-lg text-sm font-semibold border border-emerald-500 text-emerald-400 bg-transparent
+               hover:bg-emerald-500 hover:text-white transition-colors duration-150 cursor-pointer">
+        📋 Inventory Editor
+      </button>
+      <div class="flex items-center gap-2 text-xs text-gray-400">
+        <div class="w-2.5 h-2.5 rounded-full bg-amber-500 transition-colors duration-300" id="conn-dot"></div>
         <span id="conn-label">Connecting…</span>
       </div>
     </div>
   </header>
 
   <!-- Main -->
-  <main>
+  <main class="grid grid-cols-1 md:grid-cols-[320px_1fr] overflow-hidden h-[calc(100vh-58px-40px)]">
 
     <!-- Sidebar -->
-    <aside class="sidebar">
+    <aside class="sidebar bg-slate-800 border-r border-slate-700 overflow-y-auto p-4 flex flex-col gap-5 max-h-[45vh] md:max-h-full">
 
-      <!-- Inventory / Hosts -->
-      <section id="hosts-section">
-        <h2>Targets (Hosts)</h2>
-        <div class="select-actions">
-          <button onclick="selectAll('host')">All</button>
-          <button onclick="selectNone('host')">None</button>
+      <!-- Hosts -->
+      <section id="hosts-section" class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+        <h2 class="text-[0.7rem] font-semibold uppercase tracking-widest text-gray-400 mb-3 pb-2 border-b border-slate-700">
+          Targets (Hosts)
+        </h2>
+        <div class="flex gap-1.5 mb-2 select-actions">
+          <button onclick="selectAll('host')"
+            class="text-[0.7rem] px-2.5 py-0.5 rounded bg-slate-700 border border-slate-600 text-gray-400
+                   hover:text-gray-100 hover:border-blue-500 transition-colors duration-150 cursor-pointer">All</button>
+          <button onclick="selectNone('host')"
+            class="text-[0.7rem] px-2.5 py-0.5 rounded bg-slate-700 border border-slate-600 text-gray-400
+                   hover:text-gray-100 hover:border-blue-500 transition-colors duration-150 cursor-pointer">None</button>
         </div>
-        <div id="hosts-list"><span class="loading-msg">Loading inventory…</span></div>
+        <div id="hosts-list"><span class="text-gray-500 text-sm italic">Loading inventory…</span></div>
       </section>
 
       <!-- Tags -->
-      <section id="tags-section">
-        <h2 style="cursor:pointer;user-select:none;" onclick="toggleTagsPanel()">
-          <span id="tags-chevron" style="display:inline-block;transition:transform 0.2s;transform:rotate(-90deg);margin-right:4px;">▶</span>
-          Tags <small style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--muted)">(optional — leave all unchecked to run all roles)</small>
-          <span id="tags-count" style="font-weight:400;font-size:0.7rem;color:var(--accent2);margin-left:6px;"></span>
+      <section id="tags-section" class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+        <h2 class="text-[0.7rem] font-semibold uppercase tracking-widest text-gray-400 mb-3 pb-2 border-b border-slate-700 cursor-pointer select-none"
+            onclick="toggleTagsPanel()">
+          <span id="tags-chevron" class="inline-block transition-transform duration-200 -rotate-90 mr-1 text-[0.6rem]">▶</span>
+          Tags <small class="font-normal normal-case tracking-normal text-gray-500 text-[0.65rem]">(optional — leave all unchecked to run all roles)</small>
+          <span id="tags-count" class="font-normal text-[0.65rem] text-emerald-400 ml-1.5"></span>
         </h2>
-        <div id="tags-panel" style="display:none;">
-          <div class="select-actions">
-            <button onclick="selectAll('tag')">All</button>
-            <button onclick="selectNone('tag')">None</button>
+        <div id="tags-panel" class="hidden">
+          <div class="flex gap-1.5 mb-2 select-actions">
+            <button onclick="selectAll('tag')"
+              class="text-[0.7rem] px-2.5 py-0.5 rounded bg-slate-700 border border-slate-600 text-gray-400
+                     hover:text-gray-100 hover:border-blue-500 transition-colors duration-150 cursor-pointer">All</button>
+            <button onclick="selectNone('tag')"
+              class="text-[0.7rem] px-2.5 py-0.5 rounded bg-slate-700 border border-slate-600 text-gray-400
+                     hover:text-gray-100 hover:border-blue-500 transition-colors duration-150 cursor-pointer">None</button>
           </div>
-          <div id="tags-list"><span class="empty-msg">Enter vault password below, then click Load Tags.</span></div>
-          <button id="load-tags-btn" onclick="loadTags()" style="margin-top:8px;padding:6px 12px;border-radius:var(--radius);font-size:0.82rem;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface2);color:var(--text);transition:border-color 0.2s,color 0.2s;">🏷️ Load Tags</button>
+          <div id="tags-list"><span class="text-gray-500 text-sm italic">Enter vault password below, then click Load Tags.</span></div>
+          <button id="load-tags-btn" onclick="loadTags()"
+            class="mt-2 px-3 py-1.5 rounded-lg text-sm font-semibold cursor-pointer border border-slate-600 bg-slate-700 text-gray-200
+                   hover:border-blue-500 hover:text-white transition-colors duration-150">
+            🏷️ Load Tags
+          </button>
         </div>
       </section>
 
       <!-- Vault -->
-      <section class="vault-section">
-        <label for="vault-pw" style="font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);display:block;margin-bottom:6px;">Vault Password</label>
+      <section class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+        <label for="vault-pw" class="block text-[0.7rem] font-semibold uppercase tracking-widest text-gray-400 mb-2">Vault Password</label>
         <input
           type="password"
           id="vault-pw"
           placeholder="Enter vault password (if required)"
           autocomplete="current-password"
           oninput="updateRunBtn()"
+          class="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-gray-100 text-sm font-mono
+                 placeholder:text-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
         />
-        <p style="font-size:0.72rem;color:var(--muted);margin-top:4px;">Required if your playbook uses encrypted secrets. Leave blank otherwise.</p>
+        <p class="text-[0.7rem] text-gray-500 mt-1.5">Required if your playbook uses encrypted secrets. Leave blank otherwise.</p>
       </section>
 
       <!-- Run -->
-      <section class="run-section">
-        <!-- Check mode toggle -->
-        <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;cursor:pointer;padding:4px 0;">
-          <input type="checkbox" id="check-mode" style="accent-color:var(--accent2);width:15px;height:15px;">
-          <span>Check mode <span style="color:var(--muted);font-size:0.72rem">(--check, no changes applied)</span></span>
+      <section class="flex flex-col gap-2 bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+        <label class="flex items-center gap-2.5 text-sm cursor-pointer py-1">
+          <input type="checkbox" id="check-mode"
+            class="w-4 h-4 rounded bg-slate-700 border-slate-600 text-blue-600 accent-emerald-500 cursor-pointer">
+          <span>Check mode <span class="text-gray-500 text-xs">(--check, no changes applied)</span></span>
         </label>
-        <button id="run-btn" disabled onclick="runPlaybook()">▶ Run Playbook</button>
-        <div class="run-hint" id="run-hint">Select ≥1 host to enable</div>
+        <button id="run-btn" disabled onclick="runPlaybook()"
+          class="w-full py-2.5 rounded-lg text-sm font-bold tracking-wide cursor-pointer border-none
+                 bg-emerald-600 text-white transition-all duration-150
+                 hover:enabled:bg-emerald-500 hover:enabled:-translate-y-0.5
+                 disabled:opacity-30 disabled:cursor-not-allowed disabled:translate-y-0">
+          ▶ Run Playbook
+        </button>
+        <div class="text-[0.7rem] text-gray-500 text-center min-h-[1em]" id="run-hint">Select ≥1 host to enable</div>
       </section>
 
     </aside>
 
     <!-- Console -->
-    <div class="console-area">
-      <div class="console-toolbar">
-        <span>📟 Output Console</span>
-        <div class="console-toolbar-btns">
-          <button class="clear-btn" onclick="downloadLog()">Download</button>
-          <button class="clear-btn" onclick="clearConsole()">Clear</button>
+    <div class="flex flex-col bg-slate-950 overflow-hidden">
+      <div class="bg-slate-800 px-4 py-2.5 flex items-center justify-between border-b border-slate-700 shrink-0">
+        <span class="text-[0.7rem] text-gray-400 uppercase tracking-wider font-medium">📟 Output Console</span>
+        <div class="flex gap-1.5">
+          <button onclick="downloadLog()"
+            class="text-[0.7rem] px-3 py-1 rounded bg-transparent border border-slate-600 text-gray-400
+                   hover:text-gray-100 hover:border-blue-500 transition-colors duration-150 cursor-pointer">Download</button>
+          <button onclick="clearConsole()"
+            class="text-[0.7rem] px-3 py-1 rounded bg-transparent border border-slate-600 text-gray-400
+                   hover:text-gray-100 hover:border-red-500 transition-colors duration-150 cursor-pointer">Clear</button>
         </div>
       </div>
-      <div id="console" role="log" aria-live="polite" aria-atomic="false"><span class="line meta">Waiting for playbook run…</span></div>
+      <div id="console" role="log" aria-live="polite" aria-atomic="false"
+        class="flex-1 overflow-y-auto px-5 py-4 font-mono text-[0.82rem] leading-7 whitespace-pre-wrap break-words text-gray-300">
+        <span class="line meta">Waiting for playbook run…</span>
+      </div>
     </div>
 
   </main>
 
   <!-- Footer -->
-  <footer>
-    <span id="last-status">Last run: none</span>
+  <footer class="bg-slate-800 px-5 border-t border-slate-700 h-10 flex items-center gap-4">
+    <span id="last-status" class="text-xs text-gray-500"></span>
   </footer>
 
 </div>
@@ -583,7 +233,7 @@ window.addEventListener('DOMContentLoaded', async () => {
 function setConn(ok, msg) {
   const dot = document.getElementById('conn-dot');
   const lbl = document.getElementById('conn-label');
-  dot.className = 'conn-dot ' + (ok ? 'ok' : 'fail');
+  dot.className = 'w-2.5 h-2.5 rounded-full transition-colors duration-300 ' + (ok ? 'bg-emerald-500' : 'bg-red-500');
   lbl.textContent = msg || (ok ? 'Connected' : 'Error');
 }
 
@@ -596,18 +246,18 @@ async function loadInventory() {
     const { groups } = await res.json();
 
     if (!groups || Object.keys(groups).length === 0) {
-      container.innerHTML = '<span class="empty-msg">No hosts found in inventory.</span>';
+      container.innerHTML = '<span class="text-gray-500 text-sm italic">No hosts found in inventory.</span>';
       return;
     }
 
     let html = '';
     for (const [group, hosts] of Object.entries(groups)) {
       if (!hosts.length) continue;
-      html += `<div class="group-label">${escHtml(group)}</div><ul class="check-list">`;
+      html += `<div class="text-[0.65rem] font-bold uppercase tracking-wider text-emerald-400 mt-3 mb-1 first:mt-0">${escHtml(group)}</div><ul class="flex flex-col gap-0.5">`;
       for (const host of hosts) {
         const id = `host-${escHtml(host)}`;
-        html += `<li><label>
-          <input type="checkbox" class="host-cb" id="${id}" value="${escHtml(host)}" onchange="updateRunBtn()">
+        html += `<li><label class="flex items-center gap-2.5 px-2 py-1 rounded cursor-pointer transition-colors duration-150 text-sm hover:bg-slate-700">
+          <input type="checkbox" class="host-cb w-4 h-4 rounded bg-slate-700 border-slate-600 text-blue-600 accent-emerald-500 cursor-pointer" id="${id}" value="${escHtml(host)}" onchange="updateRunBtn()">
           ${escHtml(host)}
         </label></li>`;
       }
@@ -615,7 +265,7 @@ async function loadInventory() {
     }
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = `<span class="empty-msg" style="color:var(--danger)">⚠ ${escHtml(String(e))} <button onclick="loadInventory()" style="margin-left:8px;font-size:0.72rem;padding:2px 8px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);cursor:pointer;">Retry</button></span>`;
+    container.innerHTML = `<span class="text-red-400 text-sm italic">⚠ ${escHtml(String(e))} <button onclick="loadInventory()" class="ml-2 text-[0.7rem] px-2 py-0.5 rounded bg-slate-700 border border-slate-600 text-gray-200 cursor-pointer hover:border-blue-500">Retry</button></span>`;
     setConn(false, 'Inventory error');
   }
 }
@@ -636,22 +286,22 @@ async function loadTags() {
     const { tags } = await res.json();
 
     if (!tags || tags.length === 0) {
-      container.innerHTML = '<span class="empty-msg">No tags found (or no tags defined).</span>';
+      container.innerHTML = '<span class="text-gray-500 text-sm italic">No tags found (or no tags defined).</span>';
       return;
     }
 
-    let html = '<ul class="check-list">';
+    let html = '<ul class="flex flex-col gap-0.5">';
     for (const tag of tags) {
       const id = `tag-${escHtml(tag)}`;
-      html += `<li><label>
-        <input type="checkbox" class="tag-cb" id="${id}" value="${escHtml(tag)}" onchange="updateTagsCount()">
+      html += `<li><label class="flex items-center gap-2.5 px-2 py-1 rounded cursor-pointer transition-colors duration-150 text-sm hover:bg-slate-700">
+        <input type="checkbox" class="tag-cb w-4 h-4 rounded bg-slate-700 border-slate-600 text-blue-600 accent-emerald-500 cursor-pointer" id="${id}" value="${escHtml(tag)}" onchange="updateTagsCount()">
         ${escHtml(tag)}
       </label></li>`;
     }
     html += '</ul>';
     container.innerHTML = html;
   } catch (e) {
-    container.innerHTML = `<span class="empty-msg" style="color:var(--danger)">⚠ ${escHtml(String(e))} <button onclick="loadTags()" style="margin-left:8px;font-size:0.72rem;padding:2px 8px;border-radius:4px;background:var(--surface2);border:1px solid var(--border);color:var(--text);cursor:pointer;">Retry</button></span>`;
+    container.innerHTML = `<span class="text-red-400 text-sm italic">⚠ ${escHtml(String(e))} <button onclick="loadTags()" class="ml-2 text-[0.7rem] px-2 py-0.5 rounded bg-slate-700 border border-slate-600 text-gray-200 cursor-pointer hover:border-blue-500">Retry</button></span>`;
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '🏷️ Load Tags'; }
   }
@@ -671,13 +321,13 @@ function renderStatus(s) {
   const el = document.getElementById('last-status');
   if (s.returncode === null) {
     el.textContent = 'Last run: none';
-    el.className = '';
+    el.className = 'text-xs text-gray-500';
     return;
   }
   const ok = s.success;
   const ts = s.timestamp ? new Date(s.timestamp).toLocaleString() : '?';
   el.textContent = `Last run: ${ok ? '✅ Success' : '❌ Failed'} (rc=${s.returncode}) @ ${ts}`;
-  el.className = ok ? 'success' : 'fail';
+  el.className = ok ? 'text-xs text-emerald-400' : 'text-xs text-red-400';
 }
 
 /* ── Select helpers ────────────────────────────────────────── */
@@ -696,7 +346,8 @@ function selectNone(type) {
 let tagsPanelOpen = false;
 function toggleTagsPanel() {
   tagsPanelOpen = !tagsPanelOpen;
-  document.getElementById('tags-panel').style.display = tagsPanelOpen ? 'block' : 'none';
+  const panel = document.getElementById('tags-panel');
+  panel.classList.toggle('hidden', !tagsPanelOpen);
   document.getElementById('tags-chevron').style.transform = tagsPanelOpen ? 'rotate(0deg)' : 'rotate(-90deg)';
 }
 function updateTagsCount() {
@@ -761,7 +412,7 @@ async function runPlaybook() {
 
   const btn = document.getElementById('run-btn');
   btn.disabled = false;
-  btn.className = 'running';
+  btn.className = 'running w-full py-2.5 rounded-lg text-sm font-bold tracking-wide cursor-pointer border-none bg-red-600 text-white';
   btn.textContent = '🛑 Abort Run';
 
   try {
@@ -828,7 +479,7 @@ function finishRun(rc) {
   isRunning = false;
   currentSSE = null;
   const btn = document.getElementById('run-btn');
-  btn.className = '';
+  btn.className = 'w-full py-2.5 rounded-lg text-sm font-bold tracking-wide cursor-pointer border-none bg-emerald-600 text-white transition-all duration-150 hover:enabled:bg-emerald-500 hover:enabled:-translate-y-0.5 disabled:opacity-30 disabled:cursor-not-allowed disabled:translate-y-0';
   updateRunBtn();
   // Refresh status
   loadStatus();
@@ -952,8 +603,8 @@ function _invMarkDirty() { invDirty = true; }
 async function loadInventoryRaw() {
   const groupsEl = document.getElementById('inv-groups');
   const editEl = document.getElementById('inv-edit');
-  groupsEl.innerHTML = '<span class="loading-msg">Loading…</span>';
-  editEl.innerHTML = '<div class="inv-edit-placeholder">Select a host to edit</div>';
+  groupsEl.innerHTML = '<span class="text-gray-500 text-sm italic px-2">Loading…</span>';
+  editEl.innerHTML = '<div class="text-gray-500 text-sm italic m-auto text-center">Select a host to edit</div>';
 
   try {
     const res = await fetch('/api/inventory/raw');
@@ -961,24 +612,29 @@ async function loadInventoryRaw() {
     invData = await res.json();
     renderInvGroups();
   } catch (e) {
-    groupsEl.innerHTML = `<span class="empty-msg" style="color:var(--danger)">⚠ ${escHtml(String(e))}</span>`;
+    groupsEl.innerHTML = `<span class="text-red-400 text-sm italic px-2">⚠ ${escHtml(String(e))}</span>`;
   }
 }
 
 function renderInvGroups() {
   const el = document.getElementById('inv-groups');
-  if (!invData || !invData.groups) { el.innerHTML = '<span class="empty-msg">No groups</span>'; return; }
+  if (!invData || !invData.groups) { el.innerHTML = '<span class="text-gray-500 text-sm italic px-2">No groups</span>'; return; }
 
   let html = '';
   for (const [group, gd] of Object.entries(invData.groups)) {
-    html += `<div class="inv-group-name">${escHtml(group)} <button class="inv-add-host-btn" data-group="${escHtml(group)}">+ Add</button></div>`;
+    html += `<div class="text-[0.65rem] font-bold uppercase tracking-wider text-emerald-400 mt-4 mb-1.5 first:mt-0 flex items-center justify-between px-1">
+      ${escHtml(group)}
+      <button class="inv-add-host-btn text-[0.6rem] px-1.5 py-0.5 rounded bg-slate-700 border border-slate-600 text-gray-400 hover:text-emerald-400 hover:border-emerald-400 transition-colors duration-150 cursor-pointer" data-group="${escHtml(group)}">+ Add</button>
+    </div>`;
     const hosts = gd.hosts || {};
     for (const hostname of Object.keys(hosts)) {
-      const active = (invSelectedGroup === group && invSelectedHost === hostname) ? ' active' : '';
-      html += `<div class="inv-host-item${active}" tabindex="0" role="button" data-group="${escHtml(group)}" data-host="${escHtml(hostname)}">${escHtml(hostname)}</div>`;
+      const active = (invSelectedGroup === group && invSelectedHost === hostname);
+      html += `<div class="inv-host-item px-3 py-1.5 rounded-lg cursor-pointer text-sm text-gray-200 transition-colors duration-150
+                ${active ? 'bg-slate-700 border-l-2 border-emerald-400' : 'hover:bg-slate-700'}"
+                tabindex="0" role="button" data-group="${escHtml(group)}" data-host="${escHtml(hostname)}">${escHtml(hostname)}</div>`;
     }
     if (!Object.keys(hosts).length) {
-      html += '<div style="color:var(--muted);font-size:0.78rem;padding:4px 10px;font-style:italic;">No hosts</div>';
+      html += '<div class="text-gray-600 text-xs px-3 py-1 italic">No hosts</div>';
     }
   }
   el.innerHTML = html;
@@ -1015,7 +671,7 @@ function invSelectHost(group, hostname) {
 function renderInvEditForm() {
   const el = document.getElementById('inv-edit');
   if (!invSelectedGroup || !invSelectedHost || !invData) {
-    el.innerHTML = '<div class="inv-edit-placeholder">Select a host to edit</div>';
+    el.innerHTML = '<div class="text-gray-500 text-sm italic m-auto text-center">Select a host to edit</div>';
     return;
   }
 
@@ -1025,11 +681,11 @@ function renderInvEditForm() {
   // Merge: show schema fields first, then any extra vars from the host
   const allKeys = new Set([...Object.keys(schema), ...Object.keys(hostVars)]);
 
-  let html = `<div class="inv-edit-title">
-    <span>${escHtml(invSelectedHost)} <small style="color:var(--muted);font-weight:400">(${escHtml(invSelectedGroup)})</small></span>
-    <button class="inv-delete-btn" id="inv-delete-btn">🗑 Delete</button>
+  let html = `<div class="flex items-center justify-between mb-2">
+    <span class="text-base font-bold text-white">${escHtml(invSelectedHost)} <small class="text-gray-400 font-normal text-sm">(${escHtml(invSelectedGroup)})</small></span>
+    <button class="inv-delete-btn text-xs px-3 py-1 rounded-lg bg-transparent border border-red-500 text-red-400 hover:bg-red-500 hover:text-white transition-colors duration-150 cursor-pointer" id="inv-delete-btn">🗑 Delete</button>
   </div>`;
-  html += '<div id="inv-feedback" class="inv-feedback"></div>';
+  html += '<div id="inv-feedback" class="inv-feedback text-sm px-3 py-1.5 rounded-lg mb-1"></div>';
 
   for (const key of allKeys) {
     const schemaDef = schema[key];
@@ -1037,30 +693,34 @@ function renderInvEditForm() {
     const fieldType = schemaDef?.type || (typeof value === 'boolean' ? 'bool' : 'string');
     const fieldId = `inv-field-${++_invFieldIdCounter}`;
 
-    html += `<div class="inv-field"><label for="${fieldId}">${escHtml(key)}</label>`;
+    html += `<div class="flex flex-col gap-1"><label for="${fieldId}" class="text-[0.7rem] font-semibold uppercase tracking-wider text-gray-400">${escHtml(key)}</label>`;
 
     if (fieldType === 'bool') {
       const isOn = value === true || value === 'true' || value === 'True';
-      html += `<div class="inv-toggle-row">
+      html += `<div class="flex items-center gap-3">
         <div class="inv-toggle${isOn ? ' on' : ''}" data-key="${escHtml(key)}" id="${fieldId}" tabindex="0" role="switch" aria-checked="${isOn}"></div>
-        <span style="font-size:0.8rem;color:var(--muted)" id="inv-bool-label-${escHtml(key)}">${isOn ? 'true' : 'false'}</span>
+        <span class="text-xs text-gray-400" id="inv-bool-label-${escHtml(key)}">${isOn ? 'true' : 'false'}</span>
       </div>`;
     } else if (fieldType === 'enum' && schemaDef?.options) {
-      html += `<select data-key="${escHtml(key)}" id="${fieldId}">`;
+      html += `<select data-key="${escHtml(key)}" id="${fieldId}"
+        class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-gray-100 text-sm cursor-pointer
+               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200">`;
       for (const opt of schemaDef.options) {
         const sel = String(value) === opt ? ' selected' : '';
         html += `<option value="${escHtml(opt)}"${sel}>${escHtml(opt)}</option>`;
       }
       html += '</select>';
     } else {
-      html += `<input type="text" data-key="${escHtml(key)}" id="${fieldId}" value="${escHtml(String(value))}" placeholder="${fieldType === 'ip' ? '10.10.x.x' : ''}">`;
+      html += `<input type="text" data-key="${escHtml(key)}" id="${fieldId}" value="${escHtml(String(value))}" placeholder="${fieldType === 'ip' ? '10.10.x.x' : ''}"
+        class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-gray-100 text-sm
+               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200">`;
     }
 
     html += '</div>';
   }
 
-  html += `<div class="inv-actions">
-    <button class="inv-save-btn" id="inv-save-btn">💾 Save</button>
+  html += `<div class="flex gap-3 mt-2">
+    <button class="px-5 py-2 rounded-lg text-sm font-bold border-none bg-emerald-600 text-white cursor-pointer hover:bg-emerald-500 transition-colors duration-150 disabled:opacity-30 disabled:cursor-not-allowed" id="inv-save-btn">💾 Save</button>
   </div>`;
 
   el.innerHTML = html;
@@ -1116,8 +776,8 @@ function invShowFeedback(msg, type) {
   const fb = document.getElementById('inv-feedback');
   if (!fb) return;
   fb.textContent = msg;
-  fb.className = 'inv-feedback ' + (type === 'ok' || type === true ? 'ok' : 'err');
-  setTimeout(() => { fb.className = 'inv-feedback'; fb.textContent = ''; }, 4000);
+  fb.className = 'inv-feedback text-sm px-3 py-1.5 rounded-lg mb-1 ' + (type === 'ok' || type === true ? 'ok' : 'err');
+  setTimeout(() => { fb.className = 'inv-feedback text-sm px-3 py-1.5 rounded-lg mb-1'; fb.textContent = ''; }, 4000);
 }
 
 async function invSaveHost() {
@@ -1178,17 +838,19 @@ function invShowAddHostForm(group) {
   const el = document.getElementById('inv-edit');
   const formId = `inv-add-host-input-${++_invFieldIdCounter}`;
   el.innerHTML = `
-    <div class="inv-edit-title">
-      <span>Add Host to <small style="color:var(--muted);font-weight:400">${escHtml(group)}</small></span>
+    <div class="flex items-center justify-between mb-2">
+      <span class="text-base font-bold text-white">Add Host to <small class="text-gray-400 font-normal text-sm">${escHtml(group)}</small></span>
     </div>
-    <div id="inv-feedback" class="inv-feedback"></div>
-    <div class="inv-field">
-      <label for="${formId}">Hostname</label>
-      <input type="text" id="${formId}" placeholder="e.g. my-host-01" autofocus>
+    <div id="inv-feedback" class="inv-feedback text-sm px-3 py-1.5 rounded-lg mb-1"></div>
+    <div class="flex flex-col gap-1">
+      <label for="${formId}" class="text-[0.7rem] font-semibold uppercase tracking-wider text-gray-400">Hostname</label>
+      <input type="text" id="${formId}" placeholder="e.g. my-host-01" autofocus
+        class="px-3 py-2 bg-slate-900 border border-slate-600 rounded-lg text-gray-100 text-sm
+               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200">
     </div>
-    <div class="inv-actions">
-      <button class="inv-save-btn" id="inv-add-host-submit" data-group="${escHtml(group)}">➕ Add Host</button>
-      <button class="inv-delete-btn" id="inv-add-host-cancel" style="margin-left:6px">Cancel</button>
+    <div class="flex gap-3 mt-2">
+      <button class="px-5 py-2 rounded-lg text-sm font-bold border-none bg-emerald-600 text-white cursor-pointer hover:bg-emerald-500 transition-colors duration-150" id="inv-add-host-submit" data-group="${escHtml(group)}">➕ Add Host</button>
+      <button class="inv-delete-btn text-xs px-3 py-1 rounded-lg bg-transparent border border-slate-600 text-gray-400 hover:text-gray-100 hover:border-gray-400 transition-colors duration-150 cursor-pointer" id="inv-add-host-cancel">Cancel</button>
     </div>`;
 
   const input = el.querySelector(`#${formId}`);
@@ -1230,23 +892,23 @@ function invShowAddHostForm(group) {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doAdd(); });
   cancelBtn.addEventListener('click', () => {
     if (invSelectedHost) renderInvEditForm();
-    else el.innerHTML = '<div class="inv-edit-placeholder">Select a host to edit</div>';
+    else el.innerHTML = '<div class="text-gray-500 text-sm italic m-auto text-center">Select a host to edit</div>';
   });
   input.focus();
 }
 </script>
 
 <!-- Inventory Editor Modal -->
-<div class="inv-overlay" id="inv-overlay">
-  <div class="inv-modal" role="dialog" aria-modal="true" aria-labelledby="inv-title">
-    <div class="inv-header">
-      <h2 id="inv-title">📋 Inventory Editor</h2>
-      <button class="inv-close" id="inv-close-btn" aria-label="Close dialog">✕</button>
+<div class="inv-overlay fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center" id="inv-overlay">
+  <div class="inv-modal bg-slate-800 border border-slate-600 rounded-xl w-[90vw] max-w-[820px] max-h-[85vh] flex flex-col shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="inv-title">
+    <div class="flex items-center justify-between px-5 py-3.5 border-b border-slate-700">
+      <h2 id="inv-title" class="text-lg font-bold text-white">📋 Inventory Editor</h2>
+      <button class="inv-close bg-transparent border-none text-gray-400 text-xl cursor-pointer px-2 py-1 rounded-lg hover:text-red-400 hover:bg-slate-700 transition-colors duration-150" id="inv-close-btn" aria-label="Close dialog">✕</button>
     </div>
-    <div class="inv-body">
-      <div class="inv-groups" id="inv-groups"></div>
-      <div class="inv-edit" id="inv-edit">
-        <div class="inv-edit-placeholder">Select a host to edit</div>
+    <div class="grid grid-cols-1 md:grid-cols-[240px_1fr] flex-1 overflow-hidden min-h-0">
+      <div class="inv-groups border-r border-slate-700 overflow-y-auto p-3 max-h-[200px] md:max-h-full border-b md:border-b-0 border-slate-700" id="inv-groups"></div>
+      <div class="inv-edit overflow-y-auto p-5 flex flex-col gap-3.5" id="inv-edit">
+        <div class="text-gray-500 text-sm italic m-auto text-center">Select a host to edit</div>
       </div>
     </div>
   </div>
