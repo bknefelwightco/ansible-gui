@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Ansible GUI</title>
-  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.0.15" integrity="sha384-Cc9iYDAywNnHvjPYQxPnHHxeUnbzq8Jxqe9Bq9tmWFM89304CVZ6SWgZj35Q/2Pq" crossorigin="anonymous"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -86,10 +86,31 @@
     .inv-feedback { display: none; }
     .inv-feedback.ok  { display: block; background: rgba(52,211,153,0.12); color: #34d399; }
     .inv-feedback.err { display: block; background: rgba(248,113,113,0.12); color: #f87171; }
+
+    /* ── Toast notification ─────────────────────────────────── */
+    .inv-toast {
+      position: fixed;
+      bottom: 60px;
+      right: 20px;
+      z-index: 2000;
+      padding: 10px 18px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 0.3s, transform 0.3s;
+      pointer-events: none;
+    }
+    .inv-toast.show {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    .inv-toast.ok  { background: rgba(52,211,153,0.15); color: #34d399; border: 1px solid rgba(52,211,153,0.3); }
+    .inv-toast.err { background: rgba(248,113,113,0.15); color: #f87171; border: 1px solid rgba(248,113,113,0.3); }
   </style>
 </head>
 <body class="bg-slate-900 text-gray-100 font-sans antialiased">
-<div class="grid grid-rows-[auto_1fr_auto] min-h-screen">
+<div class="flex flex-col h-screen overflow-hidden">
 
   <!-- Header -->
   <header class="bg-slate-800 border-b border-slate-600 px-6 py-3.5 flex items-center justify-between">
@@ -108,13 +129,13 @@
   </header>
 
   <!-- Main -->
-  <main class="grid grid-cols-1 md:grid-cols-[320px_1fr] overflow-hidden h-[calc(100vh-58px-40px)]">
+  <main class="grid grid-cols-1 md:grid-cols-[320px_1fr] overflow-hidden flex-1 min-h-0">
 
     <!-- Sidebar -->
-    <aside class="sidebar bg-slate-800 border-r border-slate-700 overflow-y-auto p-4 flex flex-col gap-5 max-h-[45vh] md:max-h-full">
+    <aside class="sidebar bg-slate-800 border-r border-slate-700 overflow-y-auto p-4 flex flex-col gap-5 max-h-[50vh] md:max-h-full">
 
       <!-- Hosts -->
-      <section id="hosts-section" class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
+      <section id="hosts-section" class="bg-slate-800/50 rounded-xl p-4 border border-slate-700 shrink min-h-0">
         <h2 class="text-[0.7rem] font-semibold uppercase tracking-widest text-gray-400 mb-3 pb-2 border-b border-slate-700">
           Targets (Hosts)
         </h2>
@@ -126,12 +147,12 @@
             class="text-[0.7rem] px-2.5 py-0.5 rounded bg-slate-700 border border-slate-600 text-gray-400
                    hover:text-gray-100 hover:border-blue-500 transition-colors duration-150 cursor-pointer">None</button>
         </div>
-        <div id="hosts-list"><span class="text-gray-500 text-sm italic">Loading inventory…</span></div>
+        <div id="hosts-list" class="max-h-[30vh] overflow-y-auto"><span class="text-gray-500 text-sm italic">Loading inventory…</span></div>
       </section>
 
       <!-- Tags -->
       <section id="tags-section" class="bg-slate-800/50 rounded-xl p-4 border border-slate-700">
-        <h2 class="text-[0.7rem] font-semibold uppercase tracking-widest text-gray-400 mb-3 pb-2 border-b border-slate-700 cursor-pointer select-none"
+        <h2 class="text-[0.7rem] font-semibold uppercase tracking-widest text-gray-400 mb-3 pb-2 border-b border-slate-700 cursor-pointer select-none hover:bg-slate-700/50 rounded px-1 -mx-1 transition-colors duration-150"
             onclick="toggleTagsPanel()">
           <span id="tags-chevron" class="inline-block transition-transform duration-200 -rotate-90 mr-1 text-[0.6rem]">▶</span>
           Tags <small class="font-normal normal-case tracking-normal text-gray-500 text-[0.65rem]">(optional — leave all unchecked to run all roles)</small>
@@ -174,7 +195,7 @@
       <section class="flex flex-col gap-2 bg-slate-800/50 rounded-xl p-4 border border-slate-700">
         <label class="flex items-center gap-2.5 text-sm cursor-pointer py-1">
           <input type="checkbox" id="check-mode"
-            class="w-4 h-4 rounded bg-slate-700 border-slate-600 text-blue-600 accent-emerald-500 cursor-pointer">
+            class="w-4 h-4 accent-emerald-500 cursor-pointer">
           <span>Check mode <span class="text-gray-500 text-xs">(--check, no changes applied)</span></span>
         </label>
         <button id="run-btn" disabled onclick="runPlaybook()"
@@ -184,7 +205,7 @@
                  disabled:opacity-30 disabled:cursor-not-allowed disabled:translate-y-0">
           ▶ Run Playbook
         </button>
-        <div class="text-[0.7rem] text-gray-500 text-center min-h-[1em]" id="run-hint">Select ≥1 host to enable</div>
+        <div class="text-[0.7rem] text-gray-500 text-center min-h-[1em]" id="run-hint">Select at least one host to enable</div>
       </section>
 
     </aside>
@@ -203,7 +224,7 @@
         </div>
       </div>
       <div id="console" role="log" aria-live="polite" aria-atomic="false"
-        class="flex-1 overflow-y-auto px-5 py-4 font-mono text-[0.82rem] leading-7 whitespace-pre-wrap break-words text-gray-300">
+        class="flex-1 overflow-y-auto px-5 py-4 font-mono text-[0.82rem] leading-relaxed whitespace-pre-wrap break-words text-gray-300">
         <span class="line meta">Waiting for playbook run…</span>
       </div>
     </div>
@@ -221,9 +242,11 @@
 /* ── State ─────────────────────────────────────────────────── */
 let isRunning = false;
 let currentSSE = null;
+let RUN_BTN_BASE_CLS = '';
 
 /* ── Boot ──────────────────────────────────────────────────── */
 window.addEventListener('DOMContentLoaded', async () => {
+  RUN_BTN_BASE_CLS = document.getElementById('run-btn')?.className || '';
   await loadInventory();
   await loadStatus();
   setConn(true);
@@ -257,7 +280,7 @@ async function loadInventory() {
       for (const host of hosts) {
         const id = `host-${escHtml(host)}`;
         html += `<li><label class="flex items-center gap-2.5 px-2 py-1 rounded cursor-pointer transition-colors duration-150 text-sm hover:bg-slate-700">
-          <input type="checkbox" class="host-cb w-4 h-4 rounded bg-slate-700 border-slate-600 text-blue-600 accent-emerald-500 cursor-pointer" id="${id}" value="${escHtml(host)}" onchange="updateRunBtn()">
+          <input type="checkbox" class="host-cb w-4 h-4 accent-emerald-500 cursor-pointer" id="${id}" value="${escHtml(host)}" onchange="updateRunBtn()">
           ${escHtml(host)}
         </label></li>`;
       }
@@ -294,7 +317,7 @@ async function loadTags() {
     for (const tag of tags) {
       const id = `tag-${escHtml(tag)}`;
       html += `<li><label class="flex items-center gap-2.5 px-2 py-1 rounded cursor-pointer transition-colors duration-150 text-sm hover:bg-slate-700">
-        <input type="checkbox" class="tag-cb w-4 h-4 rounded bg-slate-700 border-slate-600 text-blue-600 accent-emerald-500 cursor-pointer" id="${id}" value="${escHtml(tag)}" onchange="updateTagsCount()">
+        <input type="checkbox" class="tag-cb w-4 h-4 accent-emerald-500 cursor-pointer" id="${id}" value="${escHtml(tag)}" onchange="updateTagsCount()">
         ${escHtml(tag)}
       </label></li>`;
     }
@@ -374,7 +397,7 @@ function updateRunBtn() {
   btn.textContent = '▶ Run Playbook';
 
   if (!hasHost) {
-    hint.textContent = 'Select ≥1 host to enable';
+    hint.textContent = 'Select at least one host to enable';
   } else {
     hint.textContent = `${hosts.length} host(s) selected`;
   }
@@ -412,7 +435,7 @@ async function runPlaybook() {
 
   const btn = document.getElementById('run-btn');
   btn.disabled = false;
-  btn.className = 'running w-full py-2.5 rounded-lg text-sm font-bold tracking-wide cursor-pointer border-none bg-red-600 text-white';
+  btn.className = 'running w-full py-2.5 rounded-lg text-sm font-bold tracking-wide cursor-pointer border-none bg-red-600 text-white transition-all duration-150';
   btn.textContent = '🛑 Abort Run';
 
   try {
@@ -479,7 +502,7 @@ function finishRun(rc) {
   isRunning = false;
   currentSSE = null;
   const btn = document.getElementById('run-btn');
-  btn.className = 'w-full py-2.5 rounded-lg text-sm font-bold tracking-wide cursor-pointer border-none bg-emerald-600 text-white transition-all duration-150 hover:enabled:bg-emerald-500 hover:enabled:-translate-y-0.5 disabled:opacity-30 disabled:cursor-not-allowed disabled:translate-y-0';
+  btn.className = RUN_BTN_BASE_CLS;
   updateRunBtn();
   // Refresh status
   loadStatus();
@@ -554,6 +577,7 @@ async function openInventoryEditor() {
 }
 
 function closeInventoryEditor() {
+  if (invDirty && !confirm('You have unsaved changes. Discard them?')) return;
   document.getElementById('inv-overlay').classList.remove('open');
   invDirty = false;
   // Restore focus to trigger button
@@ -780,6 +804,14 @@ function invShowFeedback(msg, type) {
   setTimeout(() => { fb.className = 'inv-feedback text-sm px-3 py-1.5 rounded-lg mb-1'; fb.textContent = ''; }, 4000);
 }
 
+function invShowToast(msg, type) {
+  const toast = document.getElementById('inv-toast');
+  if (!toast) return;
+  toast.textContent = msg;
+  toast.className = 'inv-toast ' + (type === 'ok' ? 'ok' : 'err') + ' show';
+  setTimeout(() => { toast.classList.remove('show'); }, 3500);
+}
+
 async function invSaveHost() {
   const vars = invCollectFormVars();
   const saveBtn = document.getElementById('inv-save-btn');
@@ -822,8 +854,8 @@ async function invDeleteHost() {
     invDirty = false;
     invSelectedHost = null;
     invSelectedGroup = null;
-    invShowFeedback('Host deleted successfully', 'ok');
     await loadInventoryRaw();
+    invShowToast('Host deleted successfully', 'ok');
   } catch (e) {
     invShowFeedback(`❌ ${e.message}`, 'err');
   }
@@ -897,6 +929,8 @@ function invShowAddHostForm(group) {
   input.focus();
 }
 </script>
+
+<div id="inv-toast" class="inv-toast"></div>
 
 <!-- Inventory Editor Modal -->
 <div class="inv-overlay fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] flex items-center justify-center" id="inv-overlay">
